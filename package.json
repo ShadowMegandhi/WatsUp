@@ -1,0 +1,37 @@
+{
+  "name": "uw-learn-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-course assignment tracker for University of Waterloo LEARN. Not affiliated with the University of Waterloo.",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/build.mjs --dev",
+    "build": "tsc --noEmit && node scripts/build.mjs && node scripts/verify-dist.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage",
+    "lint": "eslint src test --ext .ts,.tsx",
+    "icons": "node scripts/make-icons.mjs",
+    "verify": "node scripts/verify-dist.mjs"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.1",
+    "@types/chrome": "^0.0.287",
+    "@types/node": "^22.20.3",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "@vitest/coverage-v8": "^2.1.8",
+    "eslint": "^8.57.1",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "preact": "^10.25.3"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true
+  }
+}

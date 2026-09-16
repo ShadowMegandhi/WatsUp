@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+*.local
+.DS_Store
+Thumbs.db
+
+# Real syllabus PDFs used to build the parser corpus. The scrubbed
+# textitems.json extracts are committed instead; the originals carry
+# instructor names and contact details and must not be published.
+corpus-private/
