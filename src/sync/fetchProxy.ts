@@ -56,7 +56,7 @@ export const interpret = (
   }
 
   if (raw.status < 200 || raw.status >= 300) {
-    return err(httpError(raw.status, path));
+    return err(httpError(raw.status, path, raw.body));
   }
 
   try {

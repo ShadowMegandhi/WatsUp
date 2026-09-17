@@ -13,7 +13,13 @@ export type AppError =
   /** Rate-limit budget exhausted and the reset is too far out. Global. */
   | { readonly kind: 'rate-limited'; readonly retryAfterMs: number; readonly message: string }
   /** One endpoint failed. Course-scoped; the run continues. */
-  | { readonly kind: 'http'; readonly status: number; readonly url: string; readonly message: string }
+  | {
+      readonly kind: 'http';
+      readonly status: number;
+      readonly url: string;
+      readonly message: string;
+      readonly body?: string;
+    }
   /** Response was not the shape we expected. Course-scoped. */
   | { readonly kind: 'parse'; readonly url: string; readonly message: string }
   /** Network unreachable, aborted, offline. Course-scoped. */
@@ -39,11 +45,12 @@ export const authRedirect = (finalUrl: string): AppError => ({
   message: 'LEARN redirected to the sign-in page. The session has expired.',
 });
 
-export const httpError = (status: number, url: string): AppError => ({
+export const httpError = (status: number, url: string, body?: string): AppError => ({
   kind: 'http',
   status,
   url,
   message: `HTTP ${status} from ${url}`,
+  ...(body === undefined || body === '' ? {} : { body: body.slice(0, 600) }),
 });
 
 export const parseError = (url: string, detail: string): AppError => ({

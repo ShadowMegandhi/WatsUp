@@ -94,7 +94,14 @@ button:disabled { opacity: 0.55; cursor: progress; }
 .dot.warn { background: var(--warn); }
 
 .meta { color: var(--muted); font-size: 11px; margin-top: 4px; word-break: break-all; }
-.note { margin-top: 5px; font-size: 11px; }
+/* Diagnostic notes carry course lists and server error bodies, so the
+   line breaks in them are meaningful. */
+.note {
+  margin-top: 5px;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .note.bad { color: var(--bad); }
 
 pre {
