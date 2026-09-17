@@ -50,8 +50,8 @@ export const mountPanel = async (): Promise<void> => {
  */
 const positionRoot = async (root: HTMLElement): Promise<void> => {
   const prefs = await readPanelPrefs();
-  const width = 380;
-  const height = 240;
+  const width = 450;
+  const height = 280;
 
   const maxX = Math.max(MARGIN, window.innerWidth - width - MARGIN);
   const maxY = Math.max(MARGIN, window.innerHeight - height - MARGIN);

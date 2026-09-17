@@ -27,8 +27,8 @@ export const PANEL_CSS = `
 }
 
 .panel {
-  width: 370px;
-  max-height: min(620px, calc(100vh - 40px));
+  width: 440px;
+  max-height: min(720px, calc(100vh - 40px));
   display: flex;
   flex-direction: column;
   background: #ffffff;
@@ -201,6 +201,114 @@ export const PANEL_CSS = `
 }
 .linkbtn:hover { color: #111827; }
 
+
+/* ---- tabs ---- */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px 0;
+  background: #1c2030;
+  flex: none;
+}
+
+.tab {
+  all: unset;
+  flex: 1;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 8px 6px;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  font-size: 12px; font-weight: 600;
+  color: #9aa3b5;
+  text-align: center;
+  white-space: nowrap;
+}
+.tab:hover { color: #e5e7eb; background: rgba(255,255,255,0.06); }
+.tab:focus-visible { outline: 2px solid #e3b341; outline-offset: -2px; }
+.tab.on { background: #fbfcfd; color: #111827; font-weight: 700; }
+
+.tabn {
+  background: #3a4055; color: #e5e7eb;
+  border-radius: 999px; padding: 0 6px;
+  font-size: 10px; font-weight: 700; min-width: 17px; text-align: center;
+}
+.tab.on .tabn { background: #1c2030; color: #fff; }
+
+/* ---- calendar ---- */
+
+.cal { padding: 0 0 6px; }
+
+.calhead {
+  display: flex; align-items: center; gap: 4px;
+  padding: 10px 12px 8px;
+}
+.calmonth { font-weight: 700; font-size: 13px; flex: 1; text-align: center; }
+
+.iconbtn.dark { color: #6b7280; font-size: 17px; }
+.iconbtn.dark:hover { background: #eef1f5; color: #111827; }
+
+.todaybtn {
+  all: unset;
+  cursor: pointer; padding: 4px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 650;
+  border: 1px solid #d8dbe2; color: #5b6472;
+}
+.todaybtn:hover { border-color: #b3b9c4; color: #111827; }
+
+.calgrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  padding: 0 10px;
+}
+
+.dow {
+  text-align: center;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  color: #9aa1ad; padding-bottom: 4px;
+}
+
+.day {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  min-height: 44px;
+  border-radius: 7px;
+  padding: 4px 3px 3px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  border: 1px solid transparent;
+}
+.day:hover { background: #f1f3f6; }
+.day:focus-visible { outline: 2px solid #b8860b; outline-offset: -1px; }
+.day.out .dnum { color: #c3c8d1; }
+.day.today { border-color: #b8860b; }
+.day.today .dnum { color: #92400e; font-weight: 800; }
+.day.sel { background: #1c2030; }
+.day.sel .dnum { color: #fff; }
+.day.sel:hover { background: #262b3d; }
+
+.dnum { font-size: 12px; font-weight: 600; color: #111827; line-height: 1.1; }
+
+.dots { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; justify-content: center; }
+.dots .dot { width: 5px; height: 5px; border-radius: 50%; display: block; }
+.dots .dot.overdue { background: #b42318; }
+.dots .dot.due { background: #b8860b; }
+.dots .dot.done { background: #9aa1ad; }
+.dots .more { font-size: 9px; font-weight: 700; color: #6b7280; margin-left: 1px; }
+.day.sel .dots .more { color: #cbd5e1; }
+
+.daylist { border-top: 1px solid #eef0f4; margin-top: 8px; }
+.hint { padding: 18px 14px; text-align: center; color: #9aa1ad; margin: 0; font-size: 12px; }
+
+/* The grouped list no longer collapses, so the header is a label not a button. */
+.sechead {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  padding: 7px 12px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: #6b7280; background: #f7f8fa;
+}
+
 /* ---- minimized pill ---- */
 
 .pill {
@@ -235,6 +343,21 @@ export const PANEL_CSS = `
   .tag.new { background: #14321f; color: #6ee7a0; }
   .empty, .foot { color: #8b93a1; }
   .banner { background: #2a1614; border-color: #4a2521; color: #f87171; }
+  .tab.on { background: #14161d; color: #e5e7eb; }
+  .tab.on .tabn { background: #e3b341; color: #1c2030; }
+  .day:hover { background: #1d212c; }
+  .dnum { color: #e5e7eb; }
+  .day.out .dnum { color: #4a5260; }
+  .day.today { border-color: #e3b341; }
+  .day.today .dnum { color: #e3b341; }
+  .day.sel { background: #e3b341; }
+  .day.sel .dnum { color: #1c2030; }
+  .day.sel:hover { background: #d4a531; }
+  .dow, .hint { color: #6b7280; }
+  .todaybtn { border-color: #2a2f3c; color: #9aa1ad; }
+  .iconbtn.dark { color: #9aa1ad; }
+  .iconbtn.dark:hover { background: #232834; color: #e5e7eb; }
+  .daylist { border-color: #262b36; }
   .banner a { color: #f87171; }
 }
 `;

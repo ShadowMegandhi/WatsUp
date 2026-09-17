@@ -4,11 +4,25 @@
  * Lives on top of LEARN rather than in a browser popup, because a popup closes
  * the moment you click anything else, which makes it useless for working
  * through a list. This can be dragged, minimized to a pill, and hidden.
+ *
+ * Four tabs rather than one long scroll: Assigned is the daily view, Overdue
+ * and Done are separate so neither buries the other, and Calendar answers the
+ * question a list cannot, which is how the month is shaped.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
-import { group, attentionCount, search as filterTasks, type Section } from '@core/selectors';
+import { group, attentionCount, counts, search as filterTasks, type Section } from '@core/selectors';
 import { resolve } from '@core/status';
+import {
+  addMonths,
+  buildMonth,
+  byDay,
+  dayKeyOf,
+  initialMonth,
+  toneForDay,
+  WEEKDAY_LABELS,
+  type DayCell,
+} from '@core/calendar';
 import type { Course, ResolvedTask, SyncState, TaskItem } from '@core/types';
 import {
   type OverrideMap,
@@ -25,6 +39,18 @@ import {
 import { LEARN_ORIGIN } from '@shared/constants';
 import { formatDue, formatSyncedAt, urgency, KIND_LABEL } from './format';
 
+type Tab = 'assigned' | 'overdue' | 'done' | 'calendar';
+
+const TABS: readonly { readonly id: Tab; readonly label: string }[] = [
+  { id: 'assigned', label: 'Assigned' },
+  { id: 'overdue', label: 'Overdue' },
+  { id: 'done', label: 'Done' },
+  { id: 'calendar', label: 'Calendar' },
+];
+
+/** Assigned is split into these, in this order. */
+const ASSIGNED_SECTIONS: readonly Section[] = ['due-soon', 'upcoming', 'undated'];
+
 const SECTION_LABEL: Readonly<Record<Section, string>> = {
   overdue: 'Overdue',
   'due-soon': 'Due this week',
@@ -33,8 +59,6 @@ const SECTION_LABEL: Readonly<Record<Section, string>> = {
   completed: 'Done',
 };
 
-const ORDER: readonly Section[] = ['overdue', 'due-soon', 'upcoming', 'undated', 'completed'];
-
 export const Panel = () => {
   const [items, setItems] = useState<readonly TaskItem[]>([]);
   const [courses, setCourses] = useState<readonly Course[]>([]);
@@ -42,10 +66,14 @@ export const Panel = () => {
   const [syncState, setSyncState] = useState<SyncState | null>(null);
   const [prefs, setPrefs] = useState<PanelPrefs | null>(null);
   const [newIds, setNewIds] = useState<ReadonlySet<string>>(new Set());
+
+  const [tab, setTab] = useState<Tab>('assigned');
   const [query, setQuery] = useState('');
-  const [collapsed, setCollapsed] = useState<ReadonlySet<Section>>(new Set(['completed']));
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
+
+  const [cursor, setCursor] = useState(() => initialMonth(Date.now()));
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [i, c, o, s, p, seen] = await Promise.all([
@@ -90,6 +118,7 @@ export const Panel = () => {
 
   const visible = useMemo(() => filterTasks(resolved, query), [resolved, query]);
   const sections = useMemo(() => group(visible, now), [visible, now]);
+  const tally = useMemo(() => counts(resolved, now), [resolved, now]);
   const attention = useMemo(() => attentionCount(resolved, now), [resolved, now]);
 
   const sync = useCallback(async () => {
@@ -117,17 +146,7 @@ export const Panel = () => {
     setPrefs(await writePanelPrefs(patch));
   }, []);
 
-  const toggleSection = useCallback((s: Section) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(s)) next.delete(s);
-      else next.add(s);
-      return next;
-    });
-  }, []);
-
-  if (prefs === null) return null;
-  if (prefs.hidden) return null;
+  if (prefs === null || prefs.hidden) return null;
 
   if (prefs.minimized) {
     return (
@@ -138,8 +157,12 @@ export const Panel = () => {
     );
   }
 
-  const needsSignIn = syncState?.authState === 'needs-signin';
-  const nonEmpty = ORDER.filter((s) => sections[s].length > 0);
+  const tabCount: Readonly<Record<Tab, number>> = {
+    assigned: tally.dueSoon + tally.upcoming + tally.undated,
+    overdue: tally.overdue,
+    done: tally.completed,
+    calendar: 0,
+  };
 
   return (
     <div class="panel">
@@ -151,7 +174,7 @@ export const Panel = () => {
         onHide={() => void setPref({ hidden: true })}
       />
 
-      {needsSignIn && (
+      {syncState?.authState === 'needs-signin' && (
         <div class="banner">
           Your LEARN session expired.{' '}
           <a href={`${LEARN_ORIGIN}/d2l/home`} target="_top">
@@ -161,41 +184,93 @@ export const Panel = () => {
         </div>
       )}
 
-      <div class="toolbar">
-        <input
-          class="search"
-          type="search"
-          placeholder="Search assignments"
-          value={query}
-          onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-        />
-        <button
-          type="button"
-          class="toggle"
-          aria-pressed={prefs.showOtherEnrolments}
-          title="Include clubs, residence and other non-course enrolments"
-          onClick={() => void setPref({ showOtherEnrolments: !prefs.showOtherEnrolments })}
-        >
-          All
-        </button>
-      </div>
+      <nav class="tabs" role="tablist">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            class={tab === t.id ? 'tab on' : 'tab'}
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+          >
+            <span>{t.label}</span>
+            {tabCount[t.id] > 0 && <span class="tabn">{tabCount[t.id]}</span>}
+          </button>
+        ))}
+      </nav>
+
+      {tab !== 'calendar' && (
+        <div class="toolbar">
+          <input
+            class="search"
+            type="search"
+            placeholder="Search assignments"
+            value={query}
+            onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+          />
+          <button
+            type="button"
+            class="toggle"
+            aria-pressed={prefs.showOtherEnrolments}
+            title="Include clubs, residence and other non-course enrolments"
+            onClick={() => void setPref({ showOtherEnrolments: !prefs.showOtherEnrolments })}
+          >
+            All
+          </button>
+        </div>
+      )}
 
       <div class="body">
-        {nonEmpty.length === 0 ? (
-          <Empty synced={syncState?.lastSuccessAt ?? null} query={query} />
-        ) : (
-          nonEmpty.map((s) => (
-            <SectionBlock
-              key={s}
-              section={s}
-              tasks={sections[s]}
-              collapsed={collapsed.has(s)}
-              onToggleSection={() => toggleSection(s)}
-              onToggleTask={onToggle}
-              newIds={newIds}
-              now={now}
-            />
-          ))
+        {tab === 'assigned' && (
+          <Grouped
+            sections={ASSIGNED_SECTIONS.filter((s) => sections[s].length > 0)}
+            sectionsData={sections}
+            newIds={newIds}
+            now={now}
+            onToggle={onToggle}
+            emptyText={query.trim() === '' ? 'Nothing assigned right now.' : 'Nothing matches that search.'}
+          />
+        )}
+
+        {tab === 'overdue' && (
+          <Flat
+            tasks={sections.overdue}
+            newIds={newIds}
+            now={now}
+            onToggle={onToggle}
+            emptyText="Nothing overdue. Good."
+          />
+        )}
+
+        {tab === 'done' && (
+          <Flat
+            tasks={sections.completed}
+            newIds={newIds}
+            now={now}
+            onToggle={onToggle}
+            emptyText="Nothing marked done yet."
+          />
+        )}
+
+        {tab === 'calendar' && (
+          <CalendarView
+            tasks={resolved}
+            cursor={cursor}
+            selectedDay={selectedDay}
+            now={now}
+            newIds={newIds}
+            onMove={(delta) => {
+              setCursor(addMonths(cursor.year, cursor.month, delta));
+              setSelectedDay(null);
+            }}
+            onToday={() => {
+              setCursor(initialMonth(Date.now()));
+              setSelectedDay(dayKeyOf(Date.now()));
+            }}
+            onSelectDay={(key) => setSelectedDay(key === selectedDay ? null : key)}
+            onToggle={onToggle}
+          />
         )}
       </div>
 
@@ -208,6 +283,8 @@ export const Panel = () => {
     </div>
   );
 };
+
+// --- header ----------------------------------------------------------------
 
 const Header = ({
   attention,
@@ -241,7 +318,7 @@ const Header = ({
     <button
       type="button"
       class="iconbtn"
-      title="Hide until the next page load"
+      title="Hide. Reopen from the toolbar icon."
       aria-label="Hide"
       onClick={onHide}
     >
@@ -250,47 +327,64 @@ const Header = ({
   </div>
 );
 
-const SectionBlock = ({
-  section,
-  tasks,
-  collapsed,
-  onToggleSection,
-  onToggleTask,
+// --- list views ------------------------------------------------------------
+
+const Grouped = ({
+  sections,
+  sectionsData,
   newIds,
   now,
+  onToggle,
+  emptyText,
 }: {
-  section: Section;
-  tasks: readonly ResolvedTask[];
-  collapsed: boolean;
-  onToggleSection: () => void;
-  onToggleTask: (t: ResolvedTask) => void;
+  sections: readonly Section[];
+  sectionsData: Readonly<Record<Section, readonly ResolvedTask[]>>;
   newIds: ReadonlySet<string>;
   now: number;
-}) => (
-  <div class="section">
-    <button
-      type="button"
-      class={section === 'overdue' ? 'sechead overdue' : 'sechead'}
-      aria-expanded={!collapsed}
-      onClick={onToggleSection}
-    >
-      <span>{SECTION_LABEL[section]}</span>
-      <span class="n">{tasks.length}</span>
-      <span class="chev">{collapsed ? '▶' : '▼'}</span>
-    </button>
+  onToggle: (t: ResolvedTask) => void;
+  emptyText: string;
+}) => {
+  if (sections.length === 0) return <Empty text={emptyText} />;
 
-    {!collapsed &&
-      tasks.map((t) => (
-        <Row
-          key={t.item.id}
-          task={t}
-          isNew={newIds.has(t.item.id)}
-          now={now}
-          onToggle={onToggleTask}
-        />
+  return (
+    <>
+      {sections.map((s) => (
+        <div class="section" key={s}>
+          <div class="sechead">
+            <span>{SECTION_LABEL[s]}</span>
+            <span class="n">{sectionsData[s].length}</span>
+          </div>
+          {sectionsData[s].map((t) => (
+            <Row key={t.item.id} task={t} isNew={newIds.has(t.item.id)} now={now} onToggle={onToggle} />
+          ))}
+        </div>
       ))}
-  </div>
-);
+    </>
+  );
+};
+
+const Flat = ({
+  tasks,
+  newIds,
+  now,
+  onToggle,
+  emptyText,
+}: {
+  tasks: readonly ResolvedTask[];
+  newIds: ReadonlySet<string>;
+  now: number;
+  onToggle: (t: ResolvedTask) => void;
+  emptyText: string;
+}) => {
+  if (tasks.length === 0) return <Empty text={emptyText} />;
+  return (
+    <div class="section">
+      {tasks.map((t) => (
+        <Row key={t.item.id} task={t} isNew={newIds.has(t.item.id)} now={now} onToggle={onToggle} />
+      ))}
+    </div>
+  );
+};
 
 const Row = ({
   task,
@@ -344,23 +438,130 @@ const Row = ({
   );
 };
 
-const Empty = ({ synced, query }: { synced: number | null; query: string }) => {
-  if (query.trim() !== '') {
-    return (
-      <div class="empty">
-        <div class="big">&#128269;</div>
-        <div>Nothing matches that search.</div>
-      </div>
-    );
-  }
+// --- calendar --------------------------------------------------------------
+
+const CalendarView = ({
+  tasks,
+  cursor,
+  selectedDay,
+  now,
+  newIds,
+  onMove,
+  onToday,
+  onSelectDay,
+  onToggle,
+}: {
+  tasks: readonly ResolvedTask[];
+  cursor: { year: number; month: number };
+  selectedDay: string | null;
+  now: number;
+  newIds: ReadonlySet<string>;
+  onMove: (delta: number) => void;
+  onToday: () => void;
+  onSelectDay: (key: string) => void;
+  onToggle: (t: ResolvedTask) => void;
+}) => {
+  const view = useMemo(() => buildMonth(cursor.year, cursor.month, now), [cursor, now]);
+  const map = useMemo(() => byDay(tasks), [tasks]);
+
+  const dayTasks = selectedDay === null ? [] : (map.get(selectedDay) ?? []);
+
   return (
-    <div class="empty">
-      <div class="big">{synced === null ? '↻' : '✓'}</div>
-      <div>
-        {synced === null
-          ? 'Loading your courses. The first sync takes a few seconds.'
-          : 'Nothing outstanding right now.'}
+    <div class="cal">
+      <div class="calhead">
+        <button type="button" class="iconbtn dark" aria-label="Previous month" onClick={() => onMove(-1)}>
+          &#8249;
+        </button>
+        <span class="calmonth">{view.label}</span>
+        <button type="button" class="iconbtn dark" aria-label="Next month" onClick={() => onMove(1)}>
+          &#8250;
+        </button>
+        <button type="button" class="todaybtn" onClick={onToday}>
+          Today
+        </button>
+      </div>
+
+      <div class="calgrid">
+        {WEEKDAY_LABELS.map((d, i) => (
+          <div class="dow" key={`${d}-${i}`}>
+            {d}
+          </div>
+        ))}
+
+        {view.weeks.flat().map((cell) => (
+          <Day
+            key={cell.key}
+            cell={cell}
+            tasks={map.get(cell.key)}
+            selected={cell.key === selectedDay}
+            onSelect={() => onSelectDay(cell.key)}
+          />
+        ))}
+      </div>
+
+      <div class="daylist">
+        {selectedDay === null ? (
+          <p class="hint">Pick a day to see what is due.</p>
+        ) : dayTasks.length === 0 ? (
+          <p class="hint">Nothing due on this day.</p>
+        ) : (
+          dayTasks.map((t) => (
+            <Row key={t.item.id} task={t} isNew={newIds.has(t.item.id)} now={now} onToggle={onToggle} />
+          ))
+        )}
       </div>
     </div>
   );
 };
+
+const Day = ({
+  cell,
+  tasks,
+  selected,
+  onSelect,
+}: {
+  cell: DayCell;
+  tasks: readonly ResolvedTask[] | undefined;
+  selected: boolean;
+  onSelect: () => void;
+}) => {
+  const tone = toneForDay(tasks);
+  const n = tasks?.length ?? 0;
+
+  const classes = [
+    'day',
+    cell.inMonth ? '' : 'out',
+    cell.isToday ? 'today' : '',
+    selected ? 'sel' : '',
+    n > 0 ? 'has' : '',
+  ]
+    .filter((c) => c !== '')
+    .join(' ');
+
+  return (
+    <button
+      type="button"
+      class={classes}
+      onClick={onSelect}
+      aria-label={n === 0 ? `${cell.dayOfMonth}, nothing due` : `${cell.dayOfMonth}, ${n} due`}
+    >
+      <span class="dnum">{cell.dayOfMonth}</span>
+      {n > 0 && (
+        <span class="dots">
+          {/* Three dots is the cap: past that the count carries the meaning. */}
+          {Array.from({ length: Math.min(n, 3) }).map((_, i) => (
+            <span class={`dot ${tone}`} key={i} />
+          ))}
+          {n > 3 && <span class="more">{n}</span>}
+        </span>
+      )}
+    </button>
+  );
+};
+
+const Empty = ({ text }: { text: string }) => (
+  <div class="empty">
+    <div class="big">&#10003;</div>
+    <div>{text}</div>
+  </div>
+);
