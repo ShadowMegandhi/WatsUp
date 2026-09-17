@@ -12,6 +12,7 @@ import type { AppError } from '@shared/errors';
 
 export type RouteReply =
   | { readonly json: unknown; readonly headers?: Record<string, string> }
+  | { readonly text: string }
   | { readonly error: AppError };
 
 export interface FakeFetcher extends Fetcher {
@@ -27,6 +28,20 @@ export const fakeFetcher = (
   return {
     tier,
     calls,
+    getText(path: string): Promise<Result<string, AppError>> {
+      calls.push(path);
+      const hit = routes.find(([match]) => path.includes(match));
+      if (hit === undefined) {
+        return Promise.resolve(
+          err<AppError>({ kind: 'http', status: 404, url: path, message: `no route for ${path}` }),
+        );
+      }
+      const reply = hit[1];
+      if ('error' in reply) return Promise.resolve(err(reply.error));
+      if ('text' in reply) return Promise.resolve(ok(reply.text));
+      return Promise.resolve(ok(JSON.stringify(reply.json)));
+    },
+
     getJson(path: string): Promise<Result<FetchOutcome, AppError>> {
       calls.push(path);
 
@@ -39,6 +54,11 @@ export const fakeFetcher = (
 
       const reply = hit[1];
       if ('error' in reply) return Promise.resolve(err(reply.error));
+      if ('text' in reply) {
+        return Promise.resolve(
+          err<AppError>({ kind: 'parse', url: path, message: 'route is text, not json' }),
+        );
+      }
 
       const bag = reply.headers ?? {};
       const lower: Record<string, string> = { 'content-type': 'application/json' };

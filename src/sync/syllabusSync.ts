@@ -1,13 +1,12 @@
 /**
  * Reading a course syllabus.
  *
- * Deliberately limited to documents whose text can be read without a PDF
- * engine: LEARN HTML pages, and plain or markdown files. PDF and DOCX need
- * pdf.js and mammoth running in an offscreen document, which is a larger piece
- * of work and is not started here.
+ * Handles the two shapes a UW outline actually takes: a LEARN HTML page, and
+ * a PDF. PDFs go through an offscreen document because pdf.js cannot run in a
+ * service worker.
  *
- * A course whose outline is a PDF therefore contributes nothing yet, and says
- * so through its health record rather than failing silently.
+ * When a syllabus is found but cannot be read, that is recorded and surfaced,
+ * rather than looking identical to a course that simply had no assessments.
  */
 
 import { type Result, ok } from '@shared/result';
@@ -19,14 +18,18 @@ import { candidatesToItems, dropDuplicatesOfLearn } from '@core/syllabus/toItems
 import { LEARN_ORIGIN } from '@shared/constants';
 import type { Course, TaskItem } from '@core/types';
 import type { Fetcher } from './fetchProxy';
+import { extractPdfLines } from '@platform/offscreenHost';
 
 export interface SyllabusOutcome {
   readonly items: readonly TaskItem[];
-  /** Set when a syllabus was found but could not be read. */
-  readonly unreadable: string | null;
+  /** What was searched, so the panel can explain an empty result. */
+  readonly docsFound: number;
+  readonly docsRead: number;
+  readonly note: string | null;
 }
 
-const READABLE = /\.(html?|txt|md)$/i;
+const PDF = /\.pdf(\?|$)/i;
+const TEXTUAL = /\.(html?|txt|md)(\?|$)/i;
 
 export const syncSyllabus = async (
   fetcher: Fetcher,
@@ -35,50 +38,82 @@ export const syncSyllabus = async (
   learnItems: readonly TaskItem[],
   now: number,
 ): Promise<Result<SyllabusOutcome, AppError>> => {
+  const empty = { items: [], docsFound: 0, docsRead: 0, note: null } as const;
+
   const toc = await fetcher.getJson(`/d2l/api/le/${le}/${course.id}/content/toc`);
-  if (!toc.ok) return ok({ items: [], unreadable: null });
+  if (!toc.ok) return ok({ ...empty, note: "Could not read the course content list." });
 
   const topics = flattenToc(toc.value.json, LEARN_ORIGIN, course.id);
   const picked = pickSyllabusTopics(topics, now);
-  if (picked.length === 0) return ok({ items: [], unreadable: null });
+  if (picked.length === 0) return ok({ ...empty, note: "No syllabus found in this course." });
 
   const term = termFrom(null, now);
   const collected: TaskItem[] = [];
-  let unreadable: string | null = null;
+  const problems: string[] = [];
+  let read = 0;
 
   for (const topic of picked) {
-    const isHtmlTopic = topic.typeIdentifier === 'Html' || READABLE.test(topic.title);
-    if (!isHtmlTopic) {
-      unreadable = topic.title;
+    const lines = await readDocument(fetcher, topic.url, topic.typeIdentifier, topic.title);
+
+    if (lines.error !== null) {
+      problems.push(`${topic.title}: ${lines.error}`);
       continue;
     }
+    if (lines.value.length === 0) continue;
 
-    const text = await fetchText(fetcher, topic.url);
-    if (text === null) continue;
-
-    const candidates = extractCandidates(toLines(text), term);
+    read += 1;
+    const candidates = extractCandidates(lines.value, term);
     collected.push(
-      ...candidatesToItems(candidates, course.id, {
-        topicId: topic.id,
-        title: topic.title,
-        url: topic.url,
-      }, now),
+      ...candidatesToItems(
+        candidates,
+        course.id,
+        { topicId: topic.id, title: topic.title, url: topic.url },
+        now,
+      ),
     );
   }
 
-  return ok({ items: dropDuplicatesOfLearn(collected, learnItems), unreadable });
+  const items = dropDuplicatesOfLearn(collected, learnItems);
+
+  return ok({
+    items,
+    docsFound: picked.length,
+    docsRead: read,
+    note:
+      problems.length > 0
+        ? problems.join(SEP)
+        : read > 0 && items.length === 0
+          ? "Syllabus read, but nothing was clearly labelled with a date."
+          : null,
+  });
 };
 
-/**
- * The relay returns parsed JSON, so an HTML document arrives as a parse
- * failure rather than a body. Until the relay grows a text mode, a syllabus
- * page that is not JSON simply yields nothing, which is the safe direction.
- */
+const SEP = "; ";
+
+/** Reads one document, choosing the reader by file type. */
+const readDocument = async (
+  fetcher: Fetcher,
+  url: string,
+  typeIdentifier: string,
+  title: string,
+): Promise<{ value: readonly string[]; error: string | null }> => {
+  if (PDF.test(url) || PDF.test(title)) {
+    const pdf = await extractPdfLines(url);
+    return { value: pdf.lines, error: pdf.error };
+  }
+
+  if (typeIdentifier === 'Html' || TEXTUAL.test(url) || TEXTUAL.test(title) || typeIdentifier === '') {
+    const text = await fetchText(fetcher, url);
+    if (text === null) return { value: [], error: null };
+    return { value: toLines(text), error: null };
+  }
+
+  return { value: [], error: "Not a readable document type" };
+};
 const fetchText = async (fetcher: Fetcher, url: string): Promise<string | null> => {
   const path = url.startsWith(LEARN_ORIGIN) ? url.slice(LEARN_ORIGIN.length) : url;
-  const res = await fetcher.getJson(path);
-  if (!res.ok) return null;
-  return typeof res.value.json === 'string' ? res.value.json : null;
+  const res = await fetcher.getText(path);
+  return res.ok ? res.value : null;
 };
 
 /**

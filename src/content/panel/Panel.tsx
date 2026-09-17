@@ -23,7 +23,7 @@ import {
   WEEKDAY_LABELS,
   type DayCell,
 } from '@core/calendar';
-import type { Course, ResolvedTask, SyncState, TaskItem } from '@core/types';
+import type { Course, CourseHealth, ResolvedTask, SyncState, TaskItem } from '@core/types';
 import {
   type OverrideMap,
   type PanelPrefs,
@@ -33,19 +33,21 @@ import {
   readPanelPrefs,
   readSyncState,
   readSeenIds,
+  readAllHealth,
   toggleCompletion,
   writePanelPrefs,
 } from '@storage/store';
 import { LEARN_ORIGIN } from '@shared/constants';
 import { formatDue, formatSyncedAt, urgency, KIND_LABEL } from './format';
 
-type Tab = 'assigned' | 'overdue' | 'done' | 'calendar';
+type Tab = 'assigned' | 'overdue' | 'done' | 'calendar' | 'courses';
 
 const TABS: readonly { readonly id: Tab; readonly label: string }[] = [
   { id: 'assigned', label: 'Assigned' },
   { id: 'overdue', label: 'Overdue' },
   { id: 'done', label: 'Done' },
   { id: 'calendar', label: 'Calendar' },
+  { id: 'courses', label: 'Courses' },
 ];
 
 const ASSIGNED_SECTIONS: readonly Section[] = ['due-soon', 'upcoming', 'undated'];
@@ -66,6 +68,7 @@ const colorVars = (courseId: string | null): Record<string, string> => {
   return {
     '--c-ink': dark ? c.inkDark : c.ink,
     '--c-fill': dark ? c.fillDark : c.fill,
+    '--c-edge': dark ? c.inkDark : c.edge,
     '--stripe': dark ? c.inkDark : c.ink,
   };
 };
@@ -77,6 +80,7 @@ export const Panel = () => {
   const [syncState, setSyncState] = useState<SyncState | null>(null);
   const [prefs, setPrefs] = useState<PanelPrefs | null>(null);
   const [newIds, setNewIds] = useState<ReadonlySet<string>>(new Set());
+  const [health, setHealth] = useState<readonly CourseHealth[]>([]);
 
   const [tab, setTab] = useState<Tab>('assigned');
   const [query, setQuery] = useState('');
@@ -87,14 +91,16 @@ export const Panel = () => {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [i, c, o, s, p, seen] = await Promise.all([
+    const [i, c, o, s, p, seen, h] = await Promise.all([
       readAllItems(),
       readCourses(),
       readOverrides(),
       readSyncState(),
       readPanelPrefs(),
       readSeenIds(),
+      readAllHealth(),
     ]);
+    setHealth(h);
     setItems(i);
     setCourses(c);
     setOverrides(o);
@@ -169,6 +175,7 @@ export const Panel = () => {
     overdue: tally.overdue,
     done: tally.completed,
     calendar: 0,
+    courses: 0,
   };
 
   return (
@@ -209,7 +216,7 @@ export const Panel = () => {
         ))}
       </nav>
 
-      {tab !== 'calendar' && (
+      {tab !== 'calendar' && tab !== 'courses' && (
         <div class="toolbar">
           <input
             class="search"
@@ -264,6 +271,10 @@ export const Panel = () => {
             onToggle={onToggle}
             empty={{ line: 'Nothing finished yet.', sub: 'Tick something off and it moves here.' }}
           />
+        )}
+
+        {tab === 'courses' && (
+          <Courses courses={courses} health={health} items={items} />
         )}
 
         {tab === 'calendar' && (
@@ -358,7 +369,7 @@ function Grouped({ sections, data, newIds, now, onToggle, empty }: GroupedProps)
     <>
       {sections.map((s) => (
         <div class="section" key={s}>
-          <div class="sechead">
+          <div class={s === 'overdue' ? 'sechead late' : 'sechead'}>
             <span>{SECTION_LABEL[s]}</span>
             <span class="n">{data[s].length}</span>
           </div>
@@ -559,7 +570,16 @@ function Day({ cell, tasks, selected, onSelect }: DayProps) {
   const shown = list.slice(0, CHIPS_PER_DAY);
   const hidden = list.length - shown.length;
 
-  const classes = ['day', cell.inMonth ? '' : 'out', cell.isToday ? 'today' : '', selected ? 'sel' : '']
+  const anyLate = list.some((t) => t.status === "overdue");
+  const anyOpen = list.some((t) => t.status !== "completed");
+
+  const classes = [
+    'day',
+    cell.inMonth ? '' : 'out',
+    cell.isToday ? 'today' : '',
+    selected ? 'sel' : '',
+    anyLate ? 'late' : anyOpen ? 'has' : '',
+  ]
     .filter((c) => c !== '')
     .join(' ');
 
@@ -569,7 +589,13 @@ function Day({ cell, tasks, selected, onSelect }: DayProps) {
       : `${cell.dayOfMonth}, ${list.length} due: ${list.map((t) => t.effectiveTitle).join(', ')}`;
 
   return (
-    <button type="button" class={classes} onClick={onSelect} aria-label={label}>
+    <button
+      type="button"
+      class={classes}
+      onClick={onSelect}
+      aria-label={label}
+      style={colorVars(list[0]?.course?.id ?? null)}
+    >
       <span class="dnum">{cell.dayOfMonth}</span>
 
       {shown.map((t) => (
@@ -587,5 +613,64 @@ function Day({ cell, tasks, selected, onSelect }: DayProps) {
 
       {hidden > 0 && <span class="chipmore">{hidden} more</span>}
     </button>
+  );
+}
+
+// --- courses ---------------------------------------------------------------
+
+type CoursesProps = {
+  courses: readonly Course[];
+  health: readonly CourseHealth[];
+  items: readonly TaskItem[];
+};
+
+/**
+ * What the extension knows about each course, and what it managed to read.
+ *
+ * This exists because an empty syllabus result and a syllabus that was never
+ * found look identical from the outside. A student who cannot tell which one
+ * happened has no way to know whether to trust the list.
+ */
+function Courses({ courses, health, items }: CoursesProps) {
+  const healthById = new Map(health.map((h) => [h.courseId, h]));
+  const shown = courses.filter((c) => c.looksAcademic);
+  const list = shown.length > 0 ? shown : courses;
+
+  if (list.length === 0) {
+    return <Empty copy={{ line: 'No courses loaded yet.', sub: 'Refresh to fetch them.' }} />;
+  }
+
+  return (
+    <div class="section" style="padding-top:8px">
+      {list.map((course) => {
+        const h = healthById.get(course.id);
+        const count = items.filter((i) => i.courseId === course.id).length;
+        const fromSyllabus = h?.syllabusItems ?? 0;
+
+        return (
+          <div class="crow" key={course.id} style={colorVars(course.id)}>
+            <span class="cdot" />
+            <div class="main">
+              <a class="name" href={course.url} target="_top" rel="noreferrer">
+                {course.name}
+              </a>
+              <div class="meta">
+                <span class="course">{shortCourseLabel(course.code, course.name)}</span>
+                <span class="kind">
+                  {count} {count === 1 ? 'item' : 'items'}
+                </span>
+                {fromSyllabus > 0 && <span class="flag syllabus">{fromSyllabus} from syllabus</span>}
+              </div>
+              {h?.syllabusNote != null && h.syllabusNote !== '' && (
+                <div class="note">{h.syllabusNote}</div>
+              )}
+              {h?.lastError != null && h.lastError !== '' && (
+                <div class="conflict">{h.lastError}</div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }

@@ -103,6 +103,10 @@ export const runSync = async (
         lastOkAt: now,
         lastError: partialFailures.length > 0 ? `Could not load: ${partialFailures.join(', ')}` : null,
         consecutiveFailures: 0,
+        // Recorded so an empty syllabus result can explain itself rather
+        // than looking identical to a course that simply had nothing.
+        syllabusNote: syllabus.ok ? syllabus.value.note : 'Syllabus could not be checked.',
+        syllabusItems: extra.length,
       });
       synced += 1;
     }

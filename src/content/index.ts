@@ -28,7 +28,7 @@ const connect = (): void => {
 
   port.onMessage.addListener((raw: unknown) => {
     const req = raw as RelayRequest;
-    if (req.kind !== 'fetch-json') return;
+    if (req.kind !== 'fetch-json' && req.kind !== 'fetch-text') return;
 
     void handleRelayRequest(req).then((response) => {
       try {

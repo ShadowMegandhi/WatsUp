@@ -47,6 +47,9 @@ export default defineConfig(({ mode }) => ({
     sourcemap: mode !== 'production' ? 'inline' : false,
     minify: mode === 'production',
     target: 'chrome120',
+    // pdf.js ships its worker as a separate module that must survive as a
+    // real file, not be inlined into a chunk.
+    assetsInlineLimit: 0,
     rollupOptions:
       target === 'content'
         ? {

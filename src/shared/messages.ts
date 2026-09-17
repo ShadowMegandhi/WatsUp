@@ -19,7 +19,7 @@ export const RELAY_PORT_NAME = 'learn-relay';
 /** Service worker to content script. */
 export type RelayRequest = {
   readonly id: number;
-  readonly kind: 'fetch-json';
+  readonly kind: 'fetch-json' | 'fetch-text';
   readonly path: string;
 };
 

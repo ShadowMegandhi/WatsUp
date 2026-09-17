@@ -348,3 +348,75 @@
   .pill .mark { background: #12141a; color: #e8eaf0; }
   .body::-webkit-scrollbar-thumb { background: #333846; border-color: var(--paper); }
 }
+
+/* ---- courses tab ---- */
+
+.crow {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 14px 10px 12px;
+  margin: 0 8px 4px;
+  border-radius: 10px;
+  background: var(--raise);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--c-ink, var(--rule));
+}
+
+.cdot {
+  width: 10px; height: 10px; border-radius: 3px; flex: none; margin-top: 4px;
+  background: var(--c-ink, var(--faint));
+}
+
+.note { color: var(--soft); font-size: 11.5px; margin-top: 4px; }
+
+/* ---- colour pass ----
+ * Colour was doing one job well but sparingly. These add warmth without
+ * letting anything compete with course colour for meaning: the surfaces are
+ * tinted, not hued, and every saturated element still means "which course".
+ */
+
+.head {
+  background: linear-gradient(180deg, #ffffff 0%, #f7f8fc 100%);
+}
+
+.tab.on {
+  background: linear-gradient(180deg, rgba(47, 95, 208, 0.07) 0%, rgba(47, 95, 208, 0) 100%);
+  border-bottom-color: var(--focus);
+  color: var(--focus);
+}
+.tab.on .tabn { background: var(--focus); }
+.tab.on .tabn.late { background: var(--late); }
+
+.mark {
+  background: linear-gradient(135deg, #2f5fd0 0%, #7a3e9d 100%);
+}
+
+/* A day carries a wash of its own course colour, so the month reads as
+   coloured bands rather than a grey grid with specks on it. */
+.day.has { background: var(--c-fill, var(--raise)); border-color: var(--c-edge, var(--rule)); }
+.day.has .dnum { color: var(--c-ink, var(--soft)); }
+.day.late { background: #fdf0ee; border-color: #f3d3ce; }
+.day.late .dnum { color: var(--late); }
+
+.sechead { color: var(--focus); }
+.sechead.late { color: var(--late); }
+
+.empty .big {
+  background: linear-gradient(135deg, #3e8e5a 0%, #0e7c86 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.foot { background: linear-gradient(180deg, #f7f8fc 0%, #ffffff 100%); }
+
+@media (prefers-color-scheme: dark) {
+  .head { background: linear-gradient(180deg, #1c202a 0%, #171a22 100%); }
+  .foot { background: linear-gradient(180deg, #171a22 0%, #1c202a 100%); }
+  .tab.on {
+    background: linear-gradient(180deg, rgba(126, 166, 245, 0.12) 0%, rgba(126, 166, 245, 0) 100%);
+    color: var(--focus);
+  }
+  .tab.on .tabn { background: var(--focus); color: #12141a; }
+  .day.late { background: #2a1614; border-color: #46231f; }
+  .sechead { color: var(--focus); }
+}

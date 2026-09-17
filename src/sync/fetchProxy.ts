@@ -24,6 +24,15 @@ export interface Fetcher {
   readonly tier: 'content' | 'worker';
   /** `path` is relative to the LEARN origin, e.g. "/d2l/api/versions/". */
   getJson(path: string): Promise<Result<FetchOutcome, AppError>>;
+  /**
+   * Raw text, for documents rather than API calls.
+   *
+   * A syllabus page is HTML, and the JSON path rejects it before it can be
+   * read: a non-JSON content type is how an expired session announces itself
+   * on an API route, so that guard is right there and wrong here. This checks
+   * the response host and sniffs the body for a sign-in page instead.
+   */
+  getText(path: string): Promise<Result<string, AppError>>;
 }
 
 /**
@@ -69,6 +78,36 @@ export const interpret = (
   }
 };
 
+/**
+ * Interpretation for document fetches. Same auth reasoning as interpret, minus
+ * the content-type rule, which would reject every document we want.
+ */
+export const interpretText = (
+  path: string,
+  raw: {
+    readonly status: number;
+    readonly finalUrl: string;
+    readonly body: string;
+  },
+): Result<string, AppError> => {
+  try {
+    if (new URL(raw.finalUrl).host !== new URL(LEARN_ORIGIN).host) {
+      return err(authRedirect(raw.finalUrl));
+    }
+  } catch {
+    return err(authRedirect(raw.finalUrl));
+  }
+
+  if (raw.status < 200 || raw.status >= 300) return err(httpError(raw.status, path));
+
+  // A sign-in page served from LEARN itself still means the session is gone.
+  if (/<title>[^<]*sign in/i.test(raw.body) || raw.body.includes('adfs.uwaterloo.ca')) {
+    return err(authRedirect(raw.finalUrl));
+  }
+
+  return ok(raw.body);
+};
+
 export const headerLookupFrom = (bag: Readonly<Record<string, string>>): HeaderLookup => {
   const lower: Record<string, string> = {};
   for (const [k, v] of Object.entries(bag)) lower[k.toLowerCase()] = v;
@@ -104,6 +143,20 @@ export const workerFetcher = (): Fetcher => ({
       return err(networkError(url, cause));
     } finally {
       clearTimeout(timer);
+    }
+  },
+
+  async getText(path) {
+    const url = new URL(path, LEARN_ORIGIN).toString();
+    try {
+      const response = await fetch(url, { credentials: 'include', redirect: 'follow' });
+      return interpretText(path, {
+        status: response.status,
+        finalUrl: response.url,
+        body: await response.text(),
+      });
+    } catch (cause) {
+      return err(networkError(url, cause));
     }
   },
 });

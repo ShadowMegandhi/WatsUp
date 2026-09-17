@@ -4,24 +4,32 @@
   "version": "0.1.0",
   "description": "All your UW LEARN assignments, quizzes and deadlines in one place. Not affiliated with the University of Waterloo.",
   "minimum_chrome_version": "120",
-
-  "permissions": ["storage", "alarms", "notifications", "offscreen", "idle"],
-  "host_permissions": ["https://learn.uwaterloo.ca/*"],
-
+  "permissions": [
+    "storage",
+    "alarms",
+    "notifications",
+    "offscreen",
+    "idle"
+  ],
+  "host_permissions": [
+    "https://learn.uwaterloo.ca/*"
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
-
   "content_scripts": [
     {
-      "matches": ["https://learn.uwaterloo.ca/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://learn.uwaterloo.ca/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }
   ],
-
   "action": {
     "default_popup": "src/ui/popup/popup.html",
     "default_title": "LEARN Tracker",
@@ -31,13 +39,22 @@
       "128": "icons/icon128.png"
     }
   },
-
   "options_page": "src/ui/dashboard/dashboard.html",
-
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/*",
+        "chunks/*"
+      ],
+      "matches": [
+        "https://learn.uwaterloo.ca/*"
+      ]
+    }
+  ]
 }

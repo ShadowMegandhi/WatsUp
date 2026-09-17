@@ -96,6 +96,9 @@ export interface CourseHealth {
   readonly lastOkAt: number | null;
   readonly lastError: string | null;
   readonly consecutiveFailures: number;
+  /** What the syllabus pass did, in a sentence a student can act on. */
+  readonly syllabusNote?: string | null;
+  readonly syllabusItems?: number;
 }
 
 export type AuthState = 'ok' | 'needs-signin' | 'unknown';

@@ -11,11 +11,20 @@ import { RELAY_PORT_NAME, type RelayRequest, type RelayResponse } from '@shared/
 import { type Result, err } from '@shared/result';
 import type { AppError } from '@shared/errors';
 import { REQUEST_TIMEOUT_MS } from '@shared/constants';
-import { type Fetcher, type FetchOutcome, interpret, headerLookupFrom } from '@sync/fetchProxy';
+import {
+  type Fetcher,
+  type FetchOutcome,
+  interpret,
+  interpretText,
+  headerLookupFrom,
+} from '@sync/fetchProxy';
+
+type Mode = 'json' | 'text';
 
 interface Pending {
-  readonly resolve: (r: Result<FetchOutcome, AppError>) => void;
+  readonly resolve: (r: Result<FetchOutcome, AppError> | Result<string, AppError>) => void;
   readonly path: string;
+  readonly mode: Mode;
   readonly timer: ReturnType<typeof setTimeout>;
 }
 
@@ -42,13 +51,19 @@ export const registerRelayPort = (port: chrome.runtime.Port): void => {
     }
 
     waiting.resolve(
-      interpret(waiting.path, {
-        status: res.status,
-        finalUrl: res.finalUrl,
-        contentType: res.contentType,
-        headerLookup: headerLookupFrom(res.headers),
-        body: res.body,
-      }),
+      waiting.mode === 'text'
+        ? interpretText(waiting.path, {
+            status: res.status,
+            finalUrl: res.finalUrl,
+            body: res.body,
+          })
+        : interpret(waiting.path, {
+            status: res.status,
+            finalUrl: res.finalUrl,
+            contentType: res.contentType,
+            headerLookup: headerLookupFrom(res.headers),
+            body: res.body,
+          }),
     );
   });
 
@@ -68,43 +83,49 @@ const firstPort = (): chrome.runtime.Port | null => {
 
 export const relayFetcher = (): Fetcher => ({
   tier: 'content',
-  getJson(path) {
-    const port = firstPort();
-    if (port === null) {
-      return Promise.resolve(
-        err<AppError>({
-          kind: 'no-session',
-          message: 'No LEARN tab is open to authenticate the request.',
+  getJson: (path) => request(path, "json") as Promise<Result<FetchOutcome, AppError>>,
+  getText: (path) => request(path, "text") as Promise<Result<string, AppError>>,
+});
+
+const request = (
+  path: string,
+  mode: Mode,
+): Promise<Result<FetchOutcome, AppError> | Result<string, AppError>> => {
+  const port = firstPort();
+  if (port === null) {
+    return Promise.resolve(
+      err<AppError>({
+        kind: 'no-session',
+        message: 'No LEARN tab is open to authenticate the request.',
+      }),
+    );
+  }
+
+  const id = nextId;
+  nextId += 1;
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      resolve(err({ kind: 'network', url: path, message: 'Relay request timed out.' }));
+    }, REQUEST_TIMEOUT_MS + 5_000);
+
+    pending.set(id, { resolve, path, mode, timer });
+
+    const req: RelayRequest = { id, kind: mode === 'text' ? 'fetch-text' : 'fetch-json', path };
+    try {
+      port.postMessage(req);
+    } catch (cause) {
+      clearTimeout(timer);
+      pending.delete(id);
+      ports.delete(port);
+      resolve(
+        err({
+          kind: 'network',
+          url: path,
+          message: cause instanceof Error ? cause.message : String(cause),
         }),
       );
     }
-
-    const id = nextId;
-    nextId += 1;
-
-    return new Promise<Result<FetchOutcome, AppError>>((resolve) => {
-      const timer = setTimeout(() => {
-        pending.delete(id);
-        resolve(err({ kind: 'network', url: path, message: 'Relay request timed out.' }));
-      }, REQUEST_TIMEOUT_MS + 5_000);
-
-      pending.set(id, { resolve, path, timer });
-
-      const req: RelayRequest = { id, kind: 'fetch-json', path };
-      try {
-        port.postMessage(req);
-      } catch (cause) {
-        clearTimeout(timer);
-        pending.delete(id);
-        ports.delete(port);
-        resolve(
-          err({
-            kind: 'network',
-            url: path,
-            message: cause instanceof Error ? cause.message : String(cause),
-          }),
-        );
-      }
-    });
-  },
-});
+  });
+};
