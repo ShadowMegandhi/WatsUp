@@ -3,7 +3,7 @@
  *
  * Lives on top of LEARN rather than in a browser popup, because a popup closes
  * the moment you click anything else, which makes it useless for working
- * through a list. This can be dragged, minimized to a pill, and hidden.
+ * through a list. It drags, minimizes to a pill, and hides.
  *
  * Four tabs rather than one long scroll: Assigned is the daily view, Overdue
  * and Done are separate so neither buries the other, and Calendar answers the
@@ -13,13 +13,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { group, attentionCount, counts, search as filterTasks, type Section } from '@core/selectors';
 import { resolve } from '@core/status';
+import { colorFor, shortCourseLabel } from '@core/courseColor';
 import {
   addMonths,
   buildMonth,
   byDay,
   dayKeyOf,
   initialMonth,
-  toneForDay,
   WEEKDAY_LABELS,
   type DayCell,
 } from '@core/calendar';
@@ -48,7 +48,6 @@ const TABS: readonly { readonly id: Tab; readonly label: string }[] = [
   { id: 'calendar', label: 'Calendar' },
 ];
 
-/** Assigned is split into these, in this order. */
 const ASSIGNED_SECTIONS: readonly Section[] = ['due-soon', 'upcoming', 'undated'];
 
 const SECTION_LABEL: Readonly<Record<Section, string>> = {
@@ -57,6 +56,18 @@ const SECTION_LABEL: Readonly<Record<Section, string>> = {
   upcoming: 'Later',
   undated: 'No due date',
   completed: 'Done',
+};
+
+/** Inline custom properties, so one course colour drives chip, tag and stripe. */
+const colorVars = (courseId: string | null): Record<string, string> => {
+  if (courseId === null) return {};
+  const c = colorFor(courseId);
+  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+  return {
+    '--c-ink': dark ? c.inkDark : c.ink,
+    '--c-fill': dark ? c.fillDark : c.fill,
+    '--stripe': dark ? c.inkDark : c.ink,
+  };
 };
 
 export const Panel = () => {
@@ -89,7 +100,6 @@ export const Panel = () => {
     setOverrides(o);
     setSyncState(s);
     setPrefs(p);
-    // Anything absent from the last-seen baseline appeared since you last looked.
     const seenSet = new Set(seen);
     setNewIds(new Set(i.map((x) => x.id).filter((id) => !seenSet.has(id))));
   }, []);
@@ -98,8 +108,6 @@ export const Panel = () => {
     void load();
     const onChanged = () => void load();
     chrome.storage.onChanged.addListener(onChanged);
-
-    // Keeps relative phrasing such as "due tomorrow" honest across midnight.
     const tick = setInterval(() => setNow(Date.now()), 60_000);
     return () => {
       chrome.storage.onChanged.removeListener(onChanged);
@@ -126,8 +134,7 @@ export const Panel = () => {
     try {
       await chrome.runtime.sendMessage({ type: 'sync-now' });
     } catch {
-      // The worker may have been evicted mid-message. The storage listener
-      // picks up the result either way.
+      // Worker evicted mid-message; the storage listener still updates us.
     } finally {
       setBusy(false);
       void load();
@@ -152,7 +159,7 @@ export const Panel = () => {
     return (
       <button type="button" class="pill" onClick={() => void setPref({ minimized: false })}>
         <span class="mark">L</span>
-        <span>{attention > 0 ? `${attention} due` : 'LEARN Tracker'}</span>
+        <span>{attention > 0 ? `${attention} due soon` : 'LEARN Tracker'}</span>
       </button>
     );
   }
@@ -195,7 +202,9 @@ export const Panel = () => {
             onClick={() => setTab(t.id)}
           >
             <span>{t.label}</span>
-            {tabCount[t.id] > 0 && <span class="tabn">{tabCount[t.id]}</span>}
+            {tabCount[t.id] > 0 && (
+              <span class={t.id === 'overdue' ? 'tabn late' : 'tabn'}>{tabCount[t.id]}</span>
+            )}
           </button>
         ))}
       </nav>
@@ -225,11 +234,15 @@ export const Panel = () => {
         {tab === 'assigned' && (
           <Grouped
             sections={ASSIGNED_SECTIONS.filter((s) => sections[s].length > 0)}
-            sectionsData={sections}
+            data={sections}
             newIds={newIds}
             now={now}
             onToggle={onToggle}
-            emptyText={query.trim() === '' ? 'Nothing assigned right now.' : 'Nothing matches that search.'}
+            empty={
+              query.trim() === ''
+                ? { line: 'Nothing assigned right now.', sub: 'New work appears here automatically.' }
+                : { line: 'Nothing matches that search.', sub: null }
+            }
           />
         )}
 
@@ -239,7 +252,7 @@ export const Panel = () => {
             newIds={newIds}
             now={now}
             onToggle={onToggle}
-            emptyText="Nothing overdue. Good."
+            empty={{ line: 'Nothing overdue.', sub: 'You are caught up.' }}
           />
         )}
 
@@ -249,7 +262,7 @@ export const Panel = () => {
             newIds={newIds}
             now={now}
             onToggle={onToggle}
-            emptyText="Nothing marked done yet."
+            empty={{ line: 'Nothing finished yet.', sub: 'Tick something off and it moves here.' }}
           />
         )}
 
@@ -286,65 +299,60 @@ export const Panel = () => {
 
 // --- header ----------------------------------------------------------------
 
-const Header = ({
-  attention,
-  busy,
-  onSync,
-  onMinimize,
-  onHide,
-}: {
+type HeaderProps = {
   attention: number;
   busy: boolean;
   onSync: () => void;
   onMinimize: () => void;
   onHide: () => void;
-}) => (
-  <div class="head" data-drag-handle>
-    <span class="mark">L</span>
-    <span class="title">LEARN Tracker</span>
-    <span class={attention === 0 ? 'count zero' : 'count'}>{attention}</span>
-    <button
-      type="button"
-      class={busy ? 'iconbtn spin' : 'iconbtn'}
-      title="Refresh"
-      aria-label="Refresh"
-      onClick={onSync}
-    >
-      &#8635;
-    </button>
-    <button type="button" class="iconbtn" title="Minimize" aria-label="Minimize" onClick={onMinimize}>
-      &#8211;
-    </button>
-    <button
-      type="button"
-      class="iconbtn"
-      title="Hide. Reopen from the toolbar icon."
-      aria-label="Hide"
-      onClick={onHide}
-    >
-      &#215;
-    </button>
-  </div>
-);
+};
+
+function Header({ attention, busy, onSync, onMinimize, onHide }: HeaderProps) {
+  return (
+    <div class="head" data-drag-handle>
+      <span class="mark">L</span>
+      <span class="title">LEARN Tracker</span>
+      {attention > 0 && <span class="count urgent">{attention} due soon</span>}
+      <button
+        type="button"
+        class={busy ? 'iconbtn spin' : 'iconbtn'}
+        title="Refresh"
+        aria-label="Refresh"
+        onClick={onSync}
+      >
+        &#8635;
+      </button>
+      <button type="button" class="iconbtn" title="Minimize" aria-label="Minimize" onClick={onMinimize}>
+        &#8211;
+      </button>
+      <button
+        type="button"
+        class="iconbtn"
+        title="Hide. Reopen from the toolbar icon."
+        aria-label="Hide"
+        onClick={onHide}
+      >
+        &#215;
+      </button>
+    </div>
+  );
+}
 
 // --- list views ------------------------------------------------------------
 
-const Grouped = ({
-  sections,
-  sectionsData,
-  newIds,
-  now,
-  onToggle,
-  emptyText,
-}: {
+type EmptyCopy = { line: string; sub: string | null };
+
+type GroupedProps = {
   sections: readonly Section[];
-  sectionsData: Readonly<Record<Section, readonly ResolvedTask[]>>;
+  data: Readonly<Record<Section, readonly ResolvedTask[]>>;
   newIds: ReadonlySet<string>;
   now: number;
   onToggle: (t: ResolvedTask) => void;
-  emptyText: string;
-}) => {
-  if (sections.length === 0) return <Empty text={emptyText} />;
+  empty: EmptyCopy;
+};
+
+function Grouped({ sections, data, newIds, now, onToggle, empty }: GroupedProps) {
+  if (sections.length === 0) return <Empty copy={empty} />;
 
   return (
     <>
@@ -352,56 +360,50 @@ const Grouped = ({
         <div class="section" key={s}>
           <div class="sechead">
             <span>{SECTION_LABEL[s]}</span>
-            <span class="n">{sectionsData[s].length}</span>
+            <span class="n">{data[s].length}</span>
           </div>
-          {sectionsData[s].map((t) => (
+          {data[s].map((t) => (
             <Row key={t.item.id} task={t} isNew={newIds.has(t.item.id)} now={now} onToggle={onToggle} />
           ))}
         </div>
       ))}
     </>
   );
-};
+}
 
-const Flat = ({
-  tasks,
-  newIds,
-  now,
-  onToggle,
-  emptyText,
-}: {
+type FlatProps = {
   tasks: readonly ResolvedTask[];
   newIds: ReadonlySet<string>;
   now: number;
   onToggle: (t: ResolvedTask) => void;
-  emptyText: string;
-}) => {
-  if (tasks.length === 0) return <Empty text={emptyText} />;
+  empty: EmptyCopy;
+};
+
+function Flat({ tasks, newIds, now, onToggle, empty }: FlatProps) {
+  if (tasks.length === 0) return <Empty copy={empty} />;
   return (
-    <div class="section">
+    <div class="section" style="padding-top:8px">
       {tasks.map((t) => (
         <Row key={t.item.id} task={t} isNew={newIds.has(t.item.id)} now={now} onToggle={onToggle} />
       ))}
     </div>
   );
-};
+}
 
-const Row = ({
-  task,
-  isNew,
-  now,
-  onToggle,
-}: {
+type RowProps = {
   task: ResolvedTask;
   isNew: boolean;
   now: number;
   onToggle: (t: ResolvedTask) => void;
-}) => {
+};
+
+function Row({ task, isNew, now, onToggle }: RowProps) {
   const done = task.status === 'completed';
   const fromSyllabus = task.item.sources.some((s) => s.system === 'syllabus');
+  const course = task.course;
 
   return (
-    <div class={done ? 'row done' : 'row'}>
+    <div class={done ? 'row done' : 'row'} style={colorVars(course?.id ?? null)}>
       <button
         type="button"
         class="check"
@@ -419,10 +421,12 @@ const Row = ({
         </a>
 
         <div class="meta">
-          {task.course !== null && <span class="tag">{task.course.code || task.course.name}</span>}
-          <span class="tag kind">{KIND_LABEL[task.item.kind] ?? 'Item'}</span>
-          {fromSyllabus && <span class="tag syllabus">from syllabus</span>}
-          {isNew && <span class="tag new">new</span>}
+          {course !== null && (
+            <span class="course">{shortCourseLabel(course.code, course.name)}</span>
+          )}
+          <span class="kind">{KIND_LABEL[task.item.kind] ?? 'Item'}</span>
+          {fromSyllabus && <span class="flag syllabus">from syllabus</span>}
+          {isNew && <span class="flag new">new</span>}
           {!done && (
             <span class={`due ${urgency(task.effectiveDueAt, now)}`}>
               {formatDue(task.effectiveDueAt, now)}
@@ -436,21 +440,24 @@ const Row = ({
       </div>
     </div>
   );
-};
+}
+
+function Empty({ copy }: { copy: EmptyCopy }) {
+  return (
+    <div class="empty">
+      <div class="big">&#10003;</div>
+      <div>{copy.line}</div>
+      {copy.sub !== null && <div class="sub">{copy.sub}</div>}
+    </div>
+  );
+}
 
 // --- calendar --------------------------------------------------------------
 
-const CalendarView = ({
-  tasks,
-  cursor,
-  selectedDay,
-  now,
-  newIds,
-  onMove,
-  onToday,
-  onSelectDay,
-  onToggle,
-}: {
+/** How many chips fit in a cell before the rest become a count. */
+const CHIPS_PER_DAY = 2;
+
+type CalendarProps = {
   tasks: readonly ResolvedTask[];
   cursor: { year: number; month: number };
   selectedDay: string | null;
@@ -460,20 +467,40 @@ const CalendarView = ({
   onToday: () => void;
   onSelectDay: (key: string) => void;
   onToggle: (t: ResolvedTask) => void;
-}) => {
+};
+
+function CalendarView({
+  tasks,
+  cursor,
+  selectedDay,
+  now,
+  newIds,
+  onMove,
+  onToday,
+  onSelectDay,
+  onToggle,
+}: CalendarProps) {
   const view = useMemo(() => buildMonth(cursor.year, cursor.month, now), [cursor, now]);
   const map = useMemo(() => byDay(tasks), [tasks]);
-
   const dayTasks = selectedDay === null ? [] : (map.get(selectedDay) ?? []);
 
+  const heading =
+    selectedDay === null
+      ? null
+      : new Date(`${selectedDay}T12:00:00`).toLocaleDateString(undefined, {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+        });
+
   return (
-    <div class="cal">
+    <div>
       <div class="calhead">
-        <button type="button" class="iconbtn dark" aria-label="Previous month" onClick={() => onMove(-1)}>
+        <span class="calmonth">{view.label}</span>
+        <button type="button" class="iconbtn" aria-label="Previous month" onClick={() => onMove(-1)}>
           &#8249;
         </button>
-        <span class="calmonth">{view.label}</span>
-        <button type="button" class="iconbtn dark" aria-label="Next month" onClick={() => onMove(1)}>
+        <button type="button" class="iconbtn" aria-label="Next month" onClick={() => onMove(1)}>
           &#8250;
         </button>
         <button type="button" class="todaybtn" onClick={onToday}>
@@ -483,7 +510,7 @@ const CalendarView = ({
 
       <div class="calgrid">
         {WEEKDAY_LABELS.map((d, i) => (
-          <div class="dow" key={`${d}-${i}`}>
+          <div class="dow" key={`dow-${i}`}>
             {d}
           </div>
         ))}
@@ -503,65 +530,62 @@ const CalendarView = ({
         {selectedDay === null ? (
           <p class="hint">Pick a day to see what is due.</p>
         ) : dayTasks.length === 0 ? (
-          <p class="hint">Nothing due on this day.</p>
+          <>
+            <div class="dayhead">{heading}</div>
+            <p class="hint">Nothing due.</p>
+          </>
         ) : (
-          dayTasks.map((t) => (
-            <Row key={t.item.id} task={t} isNew={newIds.has(t.item.id)} now={now} onToggle={onToggle} />
-          ))
+          <>
+            <div class="dayhead">{heading}</div>
+            {dayTasks.map((t) => (
+              <Row key={t.item.id} task={t} isNew={newIds.has(t.item.id)} now={now} onToggle={onToggle} />
+            ))}
+          </>
         )}
       </div>
     </div>
   );
-};
+}
 
-const Day = ({
-  cell,
-  tasks,
-  selected,
-  onSelect,
-}: {
+type DayProps = {
   cell: DayCell;
   tasks: readonly ResolvedTask[] | undefined;
   selected: boolean;
   onSelect: () => void;
-}) => {
-  const tone = toneForDay(tasks);
-  const n = tasks?.length ?? 0;
+};
 
-  const classes = [
-    'day',
-    cell.inMonth ? '' : 'out',
-    cell.isToday ? 'today' : '',
-    selected ? 'sel' : '',
-    n > 0 ? 'has' : '',
-  ]
+function Day({ cell, tasks, selected, onSelect }: DayProps) {
+  const list = tasks ?? [];
+  const shown = list.slice(0, CHIPS_PER_DAY);
+  const hidden = list.length - shown.length;
+
+  const classes = ['day', cell.inMonth ? '' : 'out', cell.isToday ? 'today' : '', selected ? 'sel' : '']
     .filter((c) => c !== '')
     .join(' ');
 
+  const label =
+    list.length === 0
+      ? `${cell.dayOfMonth}, nothing due`
+      : `${cell.dayOfMonth}, ${list.length} due: ${list.map((t) => t.effectiveTitle).join(', ')}`;
+
   return (
-    <button
-      type="button"
-      class={classes}
-      onClick={onSelect}
-      aria-label={n === 0 ? `${cell.dayOfMonth}, nothing due` : `${cell.dayOfMonth}, ${n} due`}
-    >
+    <button type="button" class={classes} onClick={onSelect} aria-label={label}>
       <span class="dnum">{cell.dayOfMonth}</span>
-      {n > 0 && (
-        <span class="dots">
-          {/* Three dots is the cap: past that the count carries the meaning. */}
-          {Array.from({ length: Math.min(n, 3) }).map((_, i) => (
-            <span class={`dot ${tone}`} key={i} />
-          ))}
-          {n > 3 && <span class="more">{n}</span>}
+
+      {shown.map((t) => (
+        <span
+          key={t.item.id}
+          class={
+            t.status === 'completed' ? 'chip done' : t.status === 'overdue' ? 'chip late' : 'chip'
+          }
+          style={colorVars(t.course?.id ?? null)}
+          title={t.effectiveTitle}
+        >
+          {t.effectiveTitle}
         </span>
-      )}
+      ))}
+
+      {hidden > 0 && <span class="chipmore">{hidden} more</span>}
     </button>
   );
-};
-
-const Empty = ({ text }: { text: string }) => (
-  <div class="empty">
-    <div class="big">&#10003;</div>
-    <div>{text}</div>
-  </div>
-);
+}

@@ -13,7 +13,7 @@
 import { render } from 'preact';
 import { h } from 'preact';
 import { Panel } from './Panel';
-import { PANEL_CSS } from './styles';
+import PANEL_CSS from './panel.css?raw';
 import { readPanelPrefs, writePanelPrefs } from '@storage/store';
 
 const HOST_ID = 'uwlt-panel-host';
@@ -50,7 +50,7 @@ export const mountPanel = async (): Promise<void> => {
  */
 const positionRoot = async (root: HTMLElement): Promise<void> => {
   const prefs = await readPanelPrefs();
-  const width = 450;
+  const width = 480;
   const height = 280;
 
   const maxX = Math.max(MARGIN, window.innerWidth - width - MARGIN);
