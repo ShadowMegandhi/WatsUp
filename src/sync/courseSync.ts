@@ -1,0 +1,97 @@
+/**
+ * Syncing one course.
+ *
+ * This is the isolation boundary. It returns a Result and never throws past
+ * itself, so a single course that 403s, 404s or returns nonsense costs you
+ * that course and nothing else.
+ *
+ * Endpoints degrade independently too. If quizzes fail but assignments
+ * succeed, the course still commits what it got rather than discarding both.
+ */
+
+import { type Result, ok } from '@shared/result';
+import { type AppError, isFatal } from '@shared/errors';
+import { normalizeDropboxFolders } from '@core/normalize/dropbox';
+import { normalizeQuizzes, hasAnySubmission, withSubmission } from '@core/normalize/quiz';
+import { LEARN_ORIGIN, MAX_CONCURRENT_PER_COURSE } from '@shared/constants';
+import type { Course, TaskItem } from '@core/types';
+import type { Fetcher } from './fetchProxy';
+
+export interface CourseOutput {
+  readonly courseId: string;
+  readonly items: readonly TaskItem[];
+  /** Endpoints that failed, for the health chip. Not fatal on their own. */
+  readonly partialFailures: readonly string[];
+}
+
+export const syncCourse = async (
+  fetcher: Fetcher,
+  course: Course,
+  le: string,
+  now: number,
+): Promise<Result<CourseOutput, AppError>> => {
+  const failures: string[] = [];
+
+  const folders = await fetcher.getJson(`/d2l/api/le/${le}/${course.id}/dropbox/folders/`);
+  if (!folders.ok && isFatal(folders.error)) return folders;
+
+  const quizzes = await fetcher.getJson(`/d2l/api/le/${le}/${course.id}/quizzes/`);
+  if (!quizzes.ok && isFatal(quizzes.error)) return quizzes;
+
+  if (!folders.ok) failures.push('assignments');
+  if (!quizzes.ok) failures.push('quizzes');
+
+  const assignmentItems = folders.ok
+    ? normalizeDropboxFolders(folders.value.json, course.id, LEARN_ORIGIN, now)
+    : [];
+  const quizItems = quizzes.ok
+    ? normalizeQuizzes(quizzes.value.json, course.id, LEARN_ORIGIN, now)
+    : [];
+
+  const withEvidence = await applySubmissionEvidence(fetcher, course.id, le, assignmentItems);
+
+  return ok({
+    courseId: course.id,
+    items: [...withEvidence, ...quizItems],
+    partialFailures: failures,
+  });
+};
+
+/**
+ * Asks LEARN what has already been handed in.
+ *
+ * One call per assignment folder, which is why it is capped and why only
+ * assignments get it: quizzes would need an attempts call each and the cost
+ * is not worth it for a first pass.
+ *
+ * A failure here is silent by design. Not knowing whether something was
+ * submitted is very different from knowing it was not, and showing a student
+ * an unticked box is the safe direction to be wrong in.
+ */
+const applySubmissionEvidence = async (
+  fetcher: Fetcher,
+  courseId: string,
+  le: string,
+  items: readonly TaskItem[],
+): Promise<readonly TaskItem[]> => {
+  const out: TaskItem[] = [];
+
+  for (let i = 0; i < items.length; i += MAX_CONCURRENT_PER_COURSE) {
+    const batch = items.slice(i, i + MAX_CONCURRENT_PER_COURSE);
+    const checked = await Promise.all(
+      batch.map(async (item) => {
+        const folderId = item.sources[0]?.sourceId;
+        if (folderId === undefined) return item;
+
+        const res = await fetcher.getJson(
+          `/d2l/api/le/${le}/${courseId}/dropbox/folders/${folderId}/submissions/mysubmissions/`,
+        );
+        if (!res.ok) return item;
+        return withSubmission(item, hasAnySubmission(res.value.json));
+      }),
+    );
+    out.push(...checked);
+  }
+
+  return out;
+};

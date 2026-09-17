@@ -1,155 +1,148 @@
 /**
- * Phase 1 popup: the probe console.
+ * Toolbar popup.
  *
- * This is scaffolding with a purpose. It exists so the cookie-auth assumption
- * can be verified against a real UW account before any of the product is built
- * on top of it. Phase 5 replaces this view with the real "This Week" list.
+ * The panel on the LEARN page is the main surface. This is the control for it:
+ * a summary you can see from any tab, and the way to bring the panel back
+ * after hiding it.
  */
 
 import { render } from 'preact';
 import { useCallback, useEffect, useState } from 'preact/hooks';
-import type { Command, CommandReply, ProbeReport, ProbeStep, RuntimeStatus } from '@shared/messages';
+import { resolve } from '@core/status';
+import { counts } from '@core/selectors';
+import type { SectionCounts } from '@core/selectors';
+import type { SyncState } from '@core/types';
+import {
+  readAllItems,
+  readCourses,
+  readOverrides,
+  readPanelPrefs,
+  readSyncState,
+  writePanelPrefs,
+  type PanelPrefs,
+} from '@storage/store';
 import { LEARN_ORIGIN } from '@shared/constants';
-
-const send = async (command: Command): Promise<CommandReply> =>
-  (await chrome.runtime.sendMessage(command)) as CommandReply;
+import { formatSyncedAt } from '../../content/panel/format';
 
 const App = () => {
-  const [report, setReport] = useState<ProbeReport | null>(null);
-  const [status, setStatus] = useState<RuntimeStatus | null>(null);
-  const [running, setRunning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [tally, setTally] = useState<SectionCounts | null>(null);
+  const [state, setState] = useState<SyncState | null>(null);
+  const [prefs, setPrefs] = useState<PanelPrefs | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const refreshStatus = useCallback(async () => {
-    const reply = await send({ type: 'get-status' });
-    if (reply.type === 'status') setStatus(reply.status);
+  const load = useCallback(async () => {
+    const [items, courses, overrides, s, p] = await Promise.all([
+      readAllItems(),
+      readCourses(),
+      readOverrides(),
+      readSyncState(),
+      readPanelPrefs(),
+    ]);
+    const byId = new Map(courses.map((c) => [c.id, c]));
+    const now = Date.now();
+    const resolved = items
+      .filter((i) => byId.get(i.courseId)?.looksAcademic ?? true)
+      .map((i) => resolve(i, overrides[i.id] ?? null, byId.get(i.courseId) ?? null, now));
+
+    setTally(counts(resolved, now));
+    setState(s);
+    setPrefs(p);
   }, []);
 
   useEffect(() => {
-    void refreshStatus();
-    void send({ type: 'get-probe-result' }).then((reply) => {
-      if (reply.type === 'probe-result') setReport(reply.report);
-    });
-  }, [refreshStatus]);
+    void load();
+    const onChanged = () => void load();
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => chrome.storage.onChanged.removeListener(onChanged);
+  }, [load]);
 
-  const probe = useCallback(async () => {
-    setRunning(true);
-    setError(null);
+  const refresh = useCallback(async () => {
+    setBusy(true);
     try {
-      const reply = await send({ type: 'probe' });
-      if (reply.type === 'probe-result') setReport(reply.report);
-      else if (reply.type === 'error') setError(reply.message);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      await chrome.runtime.sendMessage({ type: 'sync-now' });
+    } catch {
+      // Worker evicted mid-message; the storage listener still updates us.
     } finally {
-      setRunning(false);
-      void refreshStatus();
+      setBusy(false);
+      void load();
     }
-  }, [refreshStatus]);
+  }, [load]);
 
-  const copy = useCallback(() => {
-    if (report !== null) void navigator.clipboard.writeText(JSON.stringify(report, null, 2));
-  }, [report]);
+  const showPanel = useCallback(async () => {
+    setPrefs(await writePanelPrefs({ hidden: false, minimized: false }));
+  }, []);
 
-  const authFailed = report?.steps.some((s) => s.outcome === 'auth-redirect') ?? false;
+  const openLearn = useCallback(() => {
+    void chrome.tabs.create({ url: `${LEARN_ORIGIN}/d2l/home` });
+  }, []);
+
+  const needsSignIn = state?.authState === 'needs-signin';
+  const nothingYet = state?.lastSuccessAt === null;
 
   return (
     <>
       <header>
         <h1>LEARN Tracker</h1>
-        <span class="phase">Phase 1 &middot; connection probe</span>
+        <span class="phase">{formatSyncedAt(state?.lastSuccessAt ?? null, Date.now())}</span>
       </header>
 
       <main>
-        <p class="intro">
-          Checks whether this extension can read your LEARN data using your
-          existing sign-in. Nothing is sent anywhere; results stay on this device.
-        </p>
-
-        {authFailed && (
+        {needsSignIn && (
           <div class="banner">
-            LEARN redirected us to the sign-in page.{' '}
+            Your LEARN session expired.{' '}
             <a href={`${LEARN_ORIGIN}/d2l/home`} target="_blank" rel="noreferrer">
-              Sign in to LEARN
-            </a>
-            , then run the probe again.
+              Sign in
+            </a>{' '}
+            and it will pick up again.
           </div>
         )}
 
-        <button type="button" onClick={probe} disabled={running}>
-          {running ? 'Probing…' : 'Run probe'}
-        </button>
-
-        {status !== null && (
-          <div class="status">
-            <span class={`chip ${status.learnTabOpen ? 'good' : ''}`}>
-              {status.learnTabOpen ? 'LEARN tab open' : 'No LEARN tab'}
-            </span>
-            <span class={`chip ${status.relayConnected ? 'good' : ''}`}>
-              {status.relayConnected ? 'Relay connected (Tier A)' : 'Relay idle (Tier B)'}
-            </span>
+        {tally !== null && (
+          <div class="tally">
+            <Stat n={tally.overdue} label="Overdue" tone="bad" />
+            <Stat n={tally.dueSoon} label="This week" tone="warn" />
+            <Stat n={tally.upcoming} label="Later" tone="" />
+            <Stat n={tally.completed} label="Done" tone="ok" />
           </div>
         )}
 
-        {error !== null && <p class="note bad">{error}</p>}
+        {nothingYet && !needsSignIn && (
+          <p class="intro">
+            Open LEARN to get started. The panel appears on the page and fills in after the first
+            sync.
+          </p>
+        )}
 
-        {report !== null && (
-          <>
-            <div class="status">
-              <span class="chip">tier: {report.tier}</span>
-              <span class="chip">{report.finishedAt - report.startedAt} ms total</span>
-              <span class="chip">{new Date(report.finishedAt).toLocaleTimeString()}</span>
-            </div>
-            {report.steps.map((step, i) => (
-              <Step key={`${step.label}-${i}`} step={step} />
-            ))}
-          </>
+        <div class="actions">
+          <button type="button" onClick={refresh} disabled={busy}>
+            {busy ? 'Refreshing...' : 'Refresh now'}
+          </button>
+          <button type="button" class="ghost" onClick={openLearn}>
+            Open LEARN
+          </button>
+        </div>
+
+        {prefs !== null && (prefs.hidden || prefs.minimized) && (
+          <button type="button" class="ghost wide" onClick={showPanel}>
+            Show the panel again
+          </button>
         )}
       </main>
 
       <footer>
-        <span>Not affiliated with the University of Waterloo</span>
-        {report !== null && (
-          <a href="#" onClick={(e) => { e.preventDefault(); copy(); }}>
-            Copy report
-          </a>
-        )}
+        <span>Nothing leaves your device</span>
+        <span>Not affiliated with UW</span>
       </footer>
     </>
   );
 };
 
-const Step = ({ step }: { step: ProbeStep }) => {
-  const tone = step.outcome === 'ok' ? 'ok' : step.outcome === 'auth-redirect' ? 'warn' : 'bad';
-  const rl = step.rateLimit;
-  const hasRateLimit = rl.remaining !== null || rl.cost !== null || rl.reset !== null;
-
-  return (
-    <div class="step">
-      <div class="step-head">
-        <span class={`dot ${tone}`} />
-        <span class="step-label">{step.label}</span>
-        {step.durationMs > 0 && <span class="chip">{step.durationMs} ms</span>}
-        {step.status !== null && <span class="chip">{step.status}</span>}
-      </div>
-
-      {step.path !== '' && <div class="meta">{step.path}</div>}
-
-      {hasRateLimit && (
-        <div class="meta">
-          rate limit — remaining: {rl.remaining ?? 'n/a'}, cost: {rl.cost ?? 'n/a'}, reset:{' '}
-          {rl.reset ?? 'n/a'}
-        </div>
-      )}
-
-      {step.note !== null && (
-        <div class={`note ${step.outcome === 'ok' ? '' : 'bad'}`}>{step.note}</div>
-      )}
-
-      {step.bodyPreview !== '' && <pre>{step.bodyPreview}</pre>}
-    </div>
-  );
-};
+const Stat = ({ n, label, tone }: { n: number; label: string; tone: string }) => (
+  <div class="stat">
+    <div class={`n ${tone}`}>{n}</div>
+    <div class="l">{label}</div>
+  </div>
+);
 
 const root = document.getElementById('root');
 if (root !== null) render(<App />, root);

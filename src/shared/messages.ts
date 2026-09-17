@@ -46,7 +46,11 @@ export type RelayResponse =
 export type Command =
   | { readonly type: 'probe' }
   | { readonly type: 'get-probe-result' }
+  /** Forced: the user pressed refresh. Ignores the minimum interval. */
   | { readonly type: 'sync-now' }
+  /** Opportunistic: a LEARN page loaded. Honours the minimum interval, so
+   *  opening five tabs does not mean five syncs. */
+  | { readonly type: 'sync-if-stale' }
   | { readonly type: 'get-status' };
 
 export type CommandReply =
