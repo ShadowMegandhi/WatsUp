@@ -15,6 +15,7 @@ import { type AppError, isFatal, userMessage } from '@shared/errors';
 import { discoverVersions, fallbackVersions } from '@d2l/versions';
 import { parseCourses } from './probe';
 import { syncCourse } from './courseSync';
+import { syncSyllabus } from './syllabusSync';
 import { LEARN_ORIGIN } from '@shared/constants';
 import type { Course } from '@core/types';
 import type { Fetcher } from './fetchProxy';
@@ -86,7 +87,15 @@ export const runSync = async (
       }
 
       const { items, partialFailures } = result.value;
-      const merged = preserveFirstSeen(await readItemsFor(course.id), items);
+
+      // The syllabus runs after LEARN, and only ever adds. Anything it reads
+      // that LEARN already reported is discarded, because LEARN is live data
+      // and a syllabus is a week-one document that goes stale the first time
+      // a schedule changes.
+      const syllabus = await syncSyllabus(fetcher, course, versions.le, items, now);
+      const extra = syllabus.ok ? syllabus.value.items : [];
+
+      const merged = preserveFirstSeen(await readItemsFor(course.id), [...items, ...extra]);
       await writeItemsFor(course.id, merged);
 
       await writeHealth({
