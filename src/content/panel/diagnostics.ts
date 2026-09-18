@@ -64,9 +64,30 @@ export const buildDiagnostics = (input: DiagnosticsInput): string => {
     out.push(`  captured:  ${stamp(portal.schedule.capturedAt)}`);
     out.push(`  url:       ${portal.url}`);
     out.push(`  term:      ${portal.schedule.termLabel ?? 'not found'}`);
-    out.push(`  sections:  ${portal.schedule.meetings.length}`);
+    out.push(`  sections:  ${portal.schedule.meetings.length} (weekly pattern)`);
+    out.push(`  sessions:  ${portal.events?.length ?? 0} (real dated events)`);
     out.push(`  saw text:  ${String(portal.sawText)}`);
     out.push('');
+    const sessions = (portal.events ?? []) as readonly {
+      title?: unknown;
+      courseCode?: unknown;
+      kind?: unknown;
+      startsAt?: unknown;
+    }[];
+
+    if (sessions.length > 0) {
+      out.push('');
+      out.push('  dated sessions found:');
+      for (const e of sessions.slice(0, 20)) {
+        const when = typeof e.startsAt === 'number' ? new Date(e.startsAt).toLocaleString() : '?';
+        const course = typeof e.courseCode === 'string' ? e.courseCode : 'no course';
+        const kind = typeof e.kind === 'string' ? e.kind : 'no type';
+        const title = typeof e.title === 'string' ? e.title : '';
+        out.push(`    ${when}  [${course} / ${kind}]  ${title}`);
+      }
+      if (sessions.length > 20) out.push(`    ... and ${sessions.length - 20} more`);
+    }
+
     out.push('  --- text the page showed, first 1500 characters ---');
     out.push(indent(portal.sample.slice(0, SAMPLE_CHARS)));
     out.push('  --- end ---');

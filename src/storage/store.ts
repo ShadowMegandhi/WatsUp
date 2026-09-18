@@ -233,6 +233,7 @@ export interface StoredPortalCapture {
     readonly termStartsOn: number | null;
     readonly meetings: readonly unknown[];
   };
+  readonly events?: readonly unknown[];
   readonly sawText: boolean;
   readonly sample: string;
   readonly url: string;

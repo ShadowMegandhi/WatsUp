@@ -23,11 +23,14 @@ const startedAt = Date.now();
 
 const attempt = async (): Promise<void> => {
   const capture = captureFromDocument(document, Date.now());
-  const found = capture.schedule.meetings.length;
+  // Dated sessions are worth more than a weekly pattern, so they dominate
+  // the comparison that decides whether this read replaces the stored one.
+  const found = capture.events.length * 10 + capture.schedule.meetings.length;
   if (found <= bestThisPage && found === 0) return;
 
   const previous = await readPortalCapture();
-  const previousCount = previous?.schedule.meetings.length ?? 0;
+  const previousCount =
+    (previous?.events?.length ?? 0) * 10 + (previous?.schedule.meetings.length ?? 0);
 
   // Only replace a capture with one that saw more. A half-rendered page, or
   // an unrelated page on the same site, must not wipe out a good read from

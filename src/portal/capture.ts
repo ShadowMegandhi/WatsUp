@@ -12,12 +12,21 @@
  */
 
 import { parseScheduleText } from './parse';
+import { parseDatedEvents, type DatedEvent } from './events';
 import { emptySchedule, type TermSchedule } from '@core/schedule/types';
 
 const SAMPLE_CHARS = 4000;
 
 export interface PortalCapture {
   readonly schedule: TermSchedule;
+  /**
+   * Real dated sessions, which beat any weekly pattern.
+   *
+   * Labs are routinely biweekly, skip reading week, or start in the second
+   * week, so counting "the third Wednesday" drifts from reality and does so
+   * silently. A calendar that states the dates is simply correct.
+   */
+  readonly events: readonly DatedEvent[];
   readonly sawText: boolean;
   /** Visible text, kept only so a failed parse can be diagnosed. */
   readonly sample: string;
@@ -27,6 +36,7 @@ export interface PortalCapture {
 export const captureFromDocument = (doc: Document, now: number): PortalCapture => {
   const text = visibleText(doc);
   const meetings = parseScheduleText(text);
+  const events = parseDatedEvents(text);
 
   return {
     schedule: {
@@ -36,6 +46,7 @@ export const captureFromDocument = (doc: Document, now: number): PortalCapture =
       termStartsOn: null,
       meetings,
     },
+    events,
     sawText: text.trim().length > 0,
     sample: text.slice(0, SAMPLE_CHARS),
     url: doc.location?.href ?? '',
