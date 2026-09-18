@@ -12,7 +12,8 @@
     "idle"
   ],
   "host_permissions": [
-    "https://learn.uwaterloo.ca/*"
+    "https://learn.uwaterloo.ca/*",
+    "https://portal.uwaterloo.ca/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -25,6 +26,16 @@
       ],
       "js": [
         "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://portal.uwaterloo.ca/*"
+      ],
+      "js": [
+        "portal.js"
       ],
       "run_at": "document_idle",
       "all_frames": false

@@ -34,6 +34,7 @@ import {
   readSyncState,
   readSeenIds,
   readAllHealth,
+  readPortalCapture,
   toggleCompletion,
   writePanelPrefs,
 } from '@storage/store';
@@ -81,6 +82,7 @@ export const Panel = () => {
   const [prefs, setPrefs] = useState<PanelPrefs | null>(null);
   const [newIds, setNewIds] = useState<ReadonlySet<string>>(new Set());
   const [health, setHealth] = useState<readonly CourseHealth[]>([]);
+  const [portal, setPortal] = useState<{ meetings: number; term: string | null } | null>(null);
 
   const [tab, setTab] = useState<Tab>('assigned');
   const [query, setQuery] = useState('');
@@ -101,6 +103,13 @@ export const Panel = () => {
       readAllHealth(),
     ]);
     setHealth(h);
+
+    const capture = await readPortalCapture();
+    setPortal(
+      capture === null
+        ? null
+        : { meetings: capture.schedule.meetings.length, term: capture.schedule.termLabel },
+    );
     setItems(i);
     setCourses(c);
     setOverrides(o);
@@ -274,7 +283,7 @@ export const Panel = () => {
         )}
 
         {tab === 'courses' && (
-          <Courses courses={courses} health={health} items={items} />
+          <Courses courses={courses} health={health} items={items} portal={portal} />
         )}
 
         {tab === 'calendar' && (
@@ -622,6 +631,7 @@ type CoursesProps = {
   courses: readonly Course[];
   health: readonly CourseHealth[];
   items: readonly TaskItem[];
+  portal: { meetings: number; term: string | null } | null;
 };
 
 /**
@@ -631,7 +641,7 @@ type CoursesProps = {
  * found look identical from the outside. A student who cannot tell which one
  * happened has no way to know whether to trust the list.
  */
-function Courses({ courses, health, items }: CoursesProps) {
+function Courses({ courses, health, items, portal }: CoursesProps) {
   const healthById = new Map(health.map((h) => [h.courseId, h]));
   const shown = courses.filter((c) => c.looksAcademic);
   const list = shown.length > 0 ? shown : courses;
@@ -642,6 +652,7 @@ function Courses({ courses, health, items }: CoursesProps) {
 
   return (
     <div class="section" style="padding-top:8px">
+      <PortalRow portal={portal} />
       {list.map((course) => {
         const h = healthById.get(course.id);
         const count = items.filter((i) => i.courseId === course.id).length;
@@ -671,6 +682,46 @@ function Courses({ courses, health, items }: CoursesProps) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Whether a class schedule has been read from Portal.
+ *
+ * Syllabi say "Lab 1" and "Tut 3", not dates. Without knowing when those
+ * actually meet, there is no way to place that work on a calendar, so this
+ * says plainly whether that link exists yet.
+ */
+function PortalRow({ portal }: { portal: { meetings: number; term: string | null } | null }) {
+  const connected = portal !== null && portal.meetings > 0;
+
+  return (
+    <div class="crow portal">
+      <span class="cdot" />
+      <div class="main">
+        <span class="name">Class schedule</span>
+        <div class="meta">
+          {connected ? (
+            <>
+              <span class="flag new">{portal.meetings} sections</span>
+              {portal.term !== null && <span class="kind">{portal.term}</span>}
+            </>
+          ) : (
+            <span class="kind">Not linked yet</span>
+          )}
+        </div>
+        <div class="note">
+          {connected
+            ? 'Lab and tutorial times are known, so syllabus work tied to them can be dated.'
+            : 'Open Portal and view your class schedule once. It will be picked up automatically, which lets syllabus items like "Lab 1" get a real date.'}
+        </div>
+        {!connected && (
+          <a class="portalbtn" href="https://portal.uwaterloo.ca/" target="_blank" rel="noreferrer">
+            Open Portal
+          </a>
+        )}
+      </div>
     </div>
   );
 }

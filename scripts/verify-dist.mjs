@@ -35,7 +35,12 @@ for (const size of Object.keys(manifest.action?.default_icon ?? {})) {
 // should be made consciously, because broad permissions are the single biggest
 // driver of Chrome Web Store review friction.
 const ALLOWED_PERMISSIONS = new Set(['storage', 'alarms', 'notifications', 'offscreen', 'idle']);
-const ALLOWED_HOSTS = new Set(['https://learn.uwaterloo.ca/*']);
+// Portal is read only to learn when labs and tutorials meet, so a syllabus
+// saying 'Lab 1' can be turned into a date.
+const ALLOWED_HOSTS = new Set([
+  'https://learn.uwaterloo.ca/*',
+  'https://portal.uwaterloo.ca/*',
+]);
 
 for (const p of manifest.permissions ?? []) {
   if (!ALLOWED_PERMISSIONS.has(p)) problems.push(`unexpected permission: ${p}`);

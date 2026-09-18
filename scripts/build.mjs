@@ -1,9 +1,10 @@
 /**
- * Runs the two Vite build targets in order, through the programmatic API.
+ * Runs the Vite build targets in order, through the programmatic API.
  *
  * "main" emits the service worker, offscreen document and HTML pages as an ES
- * module graph. "content" then emits the content script as a single IIFE,
- * because MV3 content scripts are not modules and cannot import chunks.
+ * module graph. The two content targets then emit single-file IIFE bundles,
+ * because MV3 content scripts are not modules and cannot import chunks. They
+ * are separate bundles because they run on different sites and share nothing.
  *
  * The JS API is used rather than spawning the CLI: on Windows, spawning the
  * npx/vite .cmd shim fails with EINVAL unless a shell is involved, and Vite
@@ -14,13 +15,20 @@ import { build } from 'vite';
 const mode = process.argv.includes('--dev') ? 'development' : 'production';
 const watch = process.argv.includes('--watch');
 
-const runTarget = async (target) => {
-  console.log(`\n> building target=${target} mode=${mode}`);
+const runTarget = async (target, contentEntry) => {
+  const label = contentEntry === undefined ? target : `${target}:${contentEntry}`;
+  console.log(`\n> building ${label} mode=${mode}`);
+
   process.env.BUILD_TARGET = target;
+  if (contentEntry === undefined) delete process.env.CONTENT_ENTRY;
+  else process.env.CONTENT_ENTRY = contentEntry;
+
   await build({ mode, ...(watch ? { build: { watch: {} } } : {}) });
 };
 
-// Order matters: "main" empties dist, so "content" has to follow it.
+// Order matters: "main" empties dist, so the content bundles follow it.
 await runTarget('main');
-await runTarget('content');
+await runTarget('content', 'learn');
+await runTarget('content', 'portal');
+
 console.log('\nOK - dist/ is ready. Load it unpacked at chrome://extensions');

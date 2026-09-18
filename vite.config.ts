@@ -53,10 +53,14 @@ export default defineConfig(({ mode }) => ({
     rollupOptions:
       target === 'content'
         ? {
-            input: r('src/content/index.ts'),
+            input:
+              process.env.CONTENT_ENTRY === 'portal'
+                ? r('src/portal/index.ts')
+                : r('src/content/index.ts'),
             output: {
               format: 'iife',
-              entryFileNames: 'content.js',
+              entryFileNames:
+                process.env.CONTENT_ENTRY === 'portal' ? 'portal.js' : 'content.js',
               inlineDynamicImports: true,
             },
           }

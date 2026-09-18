@@ -217,3 +217,29 @@ export const syllabusCacheIsFresh = (
   ttlMs: number,
 ): boolean =>
   cache !== null && cache.parserVersion === parserVersion && now - cache.parsedAt < ttlMs;
+
+// --- portal schedule -------------------------------------------------------
+
+/**
+ * The last schedule read from Portal.
+ *
+ * Stored whole, including the text sample, because when the parse finds
+ * nothing the sample is the difference between fixing the parser and guessing.
+ */
+export interface StoredPortalCapture {
+  readonly schedule: {
+    readonly capturedAt: number;
+    readonly termLabel: string | null;
+    readonly termStartsOn: number | null;
+    readonly meetings: readonly unknown[];
+  };
+  readonly sawText: boolean;
+  readonly sample: string;
+  readonly url: string;
+}
+
+export const writePortalCapture = (capture: StoredPortalCapture): Promise<boolean> =>
+  set({ portalCapture: capture });
+
+export const readPortalCapture = (): Promise<StoredPortalCapture | null> =>
+  get<StoredPortalCapture | null>('portalCapture', null);
