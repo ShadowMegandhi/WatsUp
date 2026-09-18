@@ -22,6 +22,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    environmentMatchGlobs: [['test/visibleText.test.ts', 'jsdom']],
     include: ['test/**/*.test.ts', 'src/**/*.test.ts'],
     coverage: {
       provider: 'v8',

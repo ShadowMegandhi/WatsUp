@@ -79,9 +79,31 @@ export const captureFromDocument = (doc: Document, now: number): PortalCapture =
  * structure the parser depends on, so block-level elements are separated
  * explicitly.
  */
+/**
+ * Text as a person sees it, with table rows kept whole.
+ *
+ * This is the part that mattered and was wrong. Treating a table cell as a
+ * block put every cell on its own line, which split a Quest schedule row
+ * into seven fragments. The parser needs a day pattern and a date range in
+ * the same string to recognise a meeting, and no fragment had both, so a
+ * page full of schedule read as a page with none.
+ *
+ * Cells are joined on one line with a separator; only the row ends it.
+ */
+/**
+ * Text as a person sees it, with table rows kept whole.
+ *
+ * This is the part that mattered and was wrong. Treating a table cell as a
+ * block put every cell on its own line, which split a Quest schedule row
+ * into seven fragments. The parser needs a day pattern and a date range in
+ * the same string to recognise a meeting, and no fragment had both, so a
+ * page full of schedule read as a page with none.
+ *
+ * Cells are joined on one line with a separator; only the row ends it.
+ */
 export const visibleText = (doc: Document): string => {
   const root = doc.body;
-  if (root === null) return '';
+  if (root === null) return "";
 
   const parts: string[] = [];
   const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -90,35 +112,47 @@ export const visibleText = (doc: Document): string => {
   while (node !== null) {
     const parent = node.parentElement;
     if (parent !== null && !isHidden(parent)) {
-      const value = (node.nodeValue ?? '').replace(/\s+/g, ' ').trim();
-      if (value !== '') parts.push({ value, block: isBlock(parent) }.value + (isBlock(parent) ? '\n' : ' '));
+      const value = (node.nodeValue ?? "").replace(/\s+/g, " ").trim();
+      if (value !== "") {
+        parts.push(value);
+        parts.push(separatorFor(parent));
+      }
     }
     node = walker.nextNode();
   }
 
   return parts
-    .join('')
-    .split('\n')
-    .map((l) => l.replace(/\s+/g, ' ').trim())
-    .filter((l) => l !== '')
-    .join('\n');
+    .join("")
+    .split("\n")
+    .map((l) => l.replace(/\s+/g, " ").replace(/(\s*\|\s*)+$/, "").trim())
+    .filter((l) => l !== "")
+    .join("\n");
 };
 
-const HIDDEN_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE']);
+const HIDDEN_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"]);
 
 const isHidden = (el: Element): boolean => {
   if (HIDDEN_TAGS.has(el.tagName)) return true;
   const style = el.ownerDocument.defaultView?.getComputedStyle(el);
   if (style === undefined) return false;
-  return style.display === 'none' || style.visibility === 'hidden';
+  return style.display === "none" || style.visibility === "hidden";
 };
 
-const BLOCK_TAGS = new Set([
-  'DIV', 'P', 'LI', 'TR', 'TD', 'TH', 'SECTION', 'ARTICLE',
-  'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BR', 'TABLE', 'UL', 'OL',
+/** Cells stay on the line and are separated; rows and blocks end it. */
+const CELL_TAGS = new Set(["TD", "TH"]);
+const LINE_END_TAGS = new Set([
+  "TR", "DIV", "P", "LI", "SECTION", "ARTICLE", "BR",
+  "H1", "H2", "H3", "H4", "H5", "H6", "TABLE", "UL", "OL",
 ]);
 
-const isBlock = (el: Element): boolean => BLOCK_TAGS.has(el.tagName);
+const separatorFor = (el: Element): string => {
+  const cell = el.closest("td, th");
+  if (cell !== null && CELL_TAGS.has(cell.tagName)) {
+    // Ends the line only when this is the last cell of its row.
+    return cell.nextElementSibling === null ? "\n" : " | ";
+  }
+  return LINE_END_TAGS.has(el.tagName) ? "\n" : " ";
+};
 
 const findTermLabel = (text: string): string | null => {
   const m = /\b(Fall|Winter|Spring)\s+(20\d\d)\b/i.exec(text);
