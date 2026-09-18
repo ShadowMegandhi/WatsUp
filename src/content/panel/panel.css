@@ -457,3 +457,112 @@
 .banner.schedule strong { display: block; margin-bottom: 3px; color: var(--focus); }
 .banner.schedule div { color: var(--soft); font-size: 12px; }
 .banner.schedule .portalbtn { margin-top: 8px; }
+
+/* ---- Waterloo palette ----
+ *
+ * UW is black and gold. Gold is used the way the university uses it: as the
+ * accent that marks what matters, against black and warm neutrals, never as a
+ * background for text where it fails contrast.
+ *
+ * Course colour still owns identity, so gold is confined to structure: the
+ * active tab, today, the logo, focus. Nothing competes for the same meaning.
+ */
+
+.root {
+  --uw-gold: #fdbf2d;
+  --uw-gold-deep: #b8860b;
+  --uw-black: #111014;
+  --uw-sand: #fbf7ef;
+  --uw-rule: #e8e1d3;
+
+  --focus: var(--uw-gold-deep);
+  --paper: var(--uw-sand);
+  --rule: var(--uw-rule);
+  --ink: var(--uw-black);
+  --wash: #f4efe3;
+}
+
+.head {
+  background: linear-gradient(180deg, #ffffff 0%, var(--uw-sand) 100%);
+  border-bottom-color: var(--uw-rule);
+}
+
+.mark {
+  background: var(--uw-black);
+  color: var(--uw-gold);
+  font-weight: 800;
+}
+
+.tabs { background: #ffffff; border-bottom-color: var(--uw-rule); }
+
+.tab.on {
+  color: var(--uw-black);
+  border-bottom-color: var(--uw-gold);
+  background: linear-gradient(180deg, rgba(253, 191, 45, 0.16) 0%, rgba(253, 191, 45, 0) 100%);
+}
+.tab.on .tabn { background: var(--uw-black); color: var(--uw-gold); }
+
+.day.today { border-color: var(--uw-gold-deep); }
+.day.today .dnum { background: var(--uw-black); color: var(--uw-gold); }
+.day.sel { border-color: var(--uw-black); box-shadow: inset 0 0 0 1px var(--uw-black); }
+
+.sechead { color: var(--uw-black); }
+.sechead .n {
+  background: var(--wash);
+  border-radius: 999px;
+  padding: 0 7px;
+  color: var(--soft);
+}
+
+.foot { background: #ffffff; border-top-color: var(--uw-rule); }
+.pill { background: var(--uw-black); }
+.pill .mark { background: var(--uw-gold); color: var(--uw-black); }
+
+.empty .big { background: none; -webkit-text-fill-color: currentColor; color: var(--done); }
+
+/* ---- announcements ---- */
+
+.post {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  padding: 10px 13px 11px;
+  margin: 0 8px 5px;
+  border-radius: 10px;
+  background: var(--raise);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--c-ink, var(--rule));
+}
+.post:hover { border-color: #d6cdb8; }
+.post.new { background: linear-gradient(180deg, rgba(253, 191, 45, 0.1), transparent); }
+
+.posthead { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.postwhen { margin-left: auto; color: var(--faint); font-size: 11px; }
+.posttitle { font-weight: 650; font-size: 12.5px; line-height: 1.35; }
+.postbody { color: var(--soft); font-size: 11.5px; margin-top: 4px; line-height: 1.45; }
+
+@media (prefers-color-scheme: dark) {
+  .root {
+    --paper: #14130f;
+    --raise: #1c1a16;
+    --rule: #2f2a21;
+    --wash: #221f19;
+    --ink: #f2ede2;
+    --focus: var(--uw-gold);
+  }
+  .head { background: linear-gradient(180deg, #211e18 0%, #1a1814 100%); border-bottom-color: #2f2a21; }
+  .tabs { background: #1a1814; border-bottom-color: #2f2a21; }
+  .tab.on {
+    background: linear-gradient(180deg, rgba(253, 191, 45, 0.14) 0%, rgba(253, 191, 45, 0) 100%);
+    color: var(--uw-gold);
+    border-bottom-color: var(--uw-gold);
+  }
+  .tab.on .tabn { background: var(--uw-gold); color: var(--uw-black); }
+  .mark { background: var(--uw-gold); color: var(--uw-black); }
+  .day.today .dnum { background: var(--uw-gold); color: var(--uw-black); }
+  .foot { background: #1a1814; border-top-color: #2f2a21; }
+  .post.new { background: linear-gradient(180deg, rgba(253, 191, 45, 0.08), transparent); }
+  .sechead { color: var(--uw-gold); }
+  .pill { background: var(--uw-gold); color: var(--uw-black); }
+  .pill .mark { background: var(--uw-black); color: var(--uw-gold); }
+}

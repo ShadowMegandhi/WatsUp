@@ -13,6 +13,7 @@
 import { STORAGE_SCHEMA_VERSION } from '@shared/constants';
 import { emptySyncState } from '@core/types';
 import type { Course, CourseHealth, SyncState, TaskItem, TaskOverride } from '@core/types';
+import type { Announcement } from '@core/normalize/news';
 
 const K = {
   schemaVersion: 'schemaVersion',
@@ -262,3 +263,30 @@ export const clearDerived = async (): Promise<void> => {
   const doomed = Object.keys(all).filter((key) => !keep.has(key));
   if (doomed.length > 0) await area().remove(doomed);
 };
+
+// --- announcements ---------------------------------------------------------
+
+/**
+ * Announcements are stored per course, like items, so one course failing to
+ * load leaves the rest intact.
+ */
+export const readNewsFor = (courseId: string): Promise<readonly Announcement[]> =>
+  get<readonly Announcement[]>(`news:${courseId}`, []);
+
+export const writeNewsFor = (
+  courseId: string,
+  news: readonly Announcement[],
+): Promise<boolean> => set({ [`news:${courseId}`]: news });
+
+export const readAllNews = async (): Promise<readonly Announcement[]> => {
+  const courses = await readCourses();
+  const perCourse = await Promise.all(courses.map((c) => readNewsFor(c.id)));
+  return perCourse.flat().sort((a, b) => (b.postedAt ?? 0) - (a.postedAt ?? 0));
+};
+
+/** Ids already seen, so genuinely new posts can be marked. */
+export const readSeenNewsIds = (): Promise<readonly string[]> =>
+  get<readonly string[]>('seenNewsIds', []);
+
+export const writeSeenNewsIds = (ids: readonly string[]): Promise<boolean> =>
+  set({ seenNewsIds: ids });

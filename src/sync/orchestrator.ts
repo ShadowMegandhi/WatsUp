@@ -31,6 +31,10 @@ import {
   writeApiVersions,
   readSeenIds,
   writeSeenIds,
+  writeNewsFor,
+  readAllNews,
+  readSeenNewsIds,
+  writeSeenNewsIds,
   readSyllabusCache,
   writeSyllabusCache,
   readPortalCapture,
@@ -110,7 +114,8 @@ export const runSync = async (
         continue; // Stored items for this course are deliberately left alone.
       }
 
-      const { items, partialFailures } = result.value;
+      const { items, news, partialFailures } = result.value;
+      await writeNewsFor(course.id, news);
 
       // The syllabus runs after LEARN, and only ever adds. Anything it reads
       // that LEARN already reported is discarded, because LEARN is live data
@@ -174,6 +179,14 @@ export const runSync = async (
         syllabusItems: extra.length,
       });
       synced += 1;
+    }
+
+    // Seed the seen set on a first run so an existing backlog does not all
+    // read as new, which would make the marker meaningless on day one.
+    const allNews = await readAllNews();
+    const seenNews = new Set(await readSeenNewsIds());
+    if (seenNews.size === 0 && isFirstEverSync) {
+      await writeSeenNewsIds(allNews.map((n) => n.id));
     }
 
     const allItems = await readAllItems();

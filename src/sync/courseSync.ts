@@ -13,6 +13,7 @@ import { type Result, ok } from '@shared/result';
 import { type AppError, isFatal } from '@shared/errors';
 import { normalizeDropboxFolders } from '@core/normalize/dropbox';
 import { normalizeQuizzes, hasAnySubmission, withSubmission } from '@core/normalize/quiz';
+import { normalizeNews, type Announcement } from '@core/normalize/news';
 import { LEARN_ORIGIN, MAX_CONCURRENT_PER_COURSE } from '@shared/constants';
 import type { Course, TaskItem } from '@core/types';
 import type { Fetcher } from './fetchProxy';
@@ -20,6 +21,7 @@ import type { Fetcher } from './fetchProxy';
 export interface CourseOutput {
   readonly courseId: string;
   readonly items: readonly TaskItem[];
+  readonly news: readonly Announcement[];
   /** Endpoints that failed, for the health chip. Not fatal on their own. */
   readonly partialFailures: readonly string[];
 }
@@ -49,11 +51,16 @@ export const syncCourse = async (
     ? normalizeQuizzes(quizzes.value.json, course.id, LEARN_ORIGIN, now)
     : [];
 
+  const news = await fetcher.getJson(`/d2l/api/le/${le}/${course.id}/news/`);
+  if (!news.ok && isFatal(news.error)) return news;
+  if (!news.ok) failures.push('announcements');
+
   const withEvidence = await applySubmissionEvidence(fetcher, course.id, le, assignmentItems, known, now);
 
   return ok({
     courseId: course.id,
     items: [...withEvidence, ...quizItems],
+    news: news.ok ? normalizeNews(news.value.json, course.id, LEARN_ORIGIN) : [],
     partialFailures: failures,
   });
 };

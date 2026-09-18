@@ -24,6 +24,7 @@ import {
   type DayCell,
 } from '@core/calendar';
 import type { Course, CourseHealth, ResolvedTask, SyncState, TaskItem } from '@core/types';
+import type { Announcement } from '@core/normalize/news';
 import {
   type OverrideMap,
   type PanelPrefs,
@@ -34,6 +35,9 @@ import {
   readSyncState,
   readSeenIds,
   readAllHealth,
+  readAllNews,
+  readSeenNewsIds,
+  writeSeenNewsIds,
   readPortalCapture,
   type StoredPortalCapture,
   toggleCompletion,
@@ -44,13 +48,14 @@ import { formatDue, formatSyncedAt, urgency, KIND_LABEL } from './format';
 import { buildDiagnostics } from './diagnostics';
 import { grantedOrigins } from '@platform/permissions';
 
-type Tab = 'assigned' | 'overdue' | 'done' | 'calendar' | 'courses';
+type Tab = 'assigned' | 'overdue' | 'done' | 'calendar' | 'news' | 'courses';
 
 const TABS: readonly { readonly id: Tab; readonly label: string }[] = [
   { id: 'assigned', label: 'Assigned' },
   { id: 'overdue', label: 'Overdue' },
   { id: 'done', label: 'Done' },
   { id: 'calendar', label: 'Calendar' },
+  { id: 'news', label: 'News' },
   { id: 'courses', label: 'Courses' },
 ];
 
@@ -85,6 +90,8 @@ export const Panel = () => {
   const [prefs, setPrefs] = useState<PanelPrefs | null>(null);
   const [newIds, setNewIds] = useState<ReadonlySet<string>>(new Set());
   const [health, setHealth] = useState<readonly CourseHealth[]>([]);
+  const [news, setNews] = useState<readonly Announcement[]>([]);
+  const [seenNews, setSeenNews] = useState<ReadonlySet<string>>(new Set());
   const [portal, setPortal] = useState<{ meetings: number; term: string | null } | null>(null);
   const [rawPortal, setRawPortal] = useState<StoredPortalCapture | null>(null);
   const [hosts, setHosts] = useState<readonly string[]>([]);
@@ -108,6 +115,10 @@ export const Panel = () => {
       readAllHealth(),
     ]);
     setHealth(h);
+
+    const [posts, seenPosts] = await Promise.all([readAllNews(), readSeenNewsIds()]);
+    setNews(posts);
+    setSeenNews(new Set(seenPosts));
 
     const capture = await readPortalCapture();
     setRawPortal(capture);
@@ -157,6 +168,15 @@ export const Panel = () => {
   const tally = useMemo(() => counts(resolved, now), [resolved, now]);
   const attention = useMemo(() => attentionCount(resolved, now), [resolved, now]);
 
+  const visibleNews = useMemo(
+    () =>
+      news.filter(
+        (n) => prefs?.showOtherEnrolments || (courseById.get(n.courseId)?.looksAcademic ?? true),
+      ),
+    [news, courseById, prefs?.showOtherEnrolments],
+  );
+  const unreadNews = visibleNews.filter((n) => !seenNews.has(n.id)).length;
+
   // Read from the notes the syllabus pass already writes, so the count is
   // whatever the reader actually found rather than a second guess at it.
   const waitingOnSchedule = useMemo(
@@ -188,6 +208,13 @@ export const Panel = () => {
     [load],
   );
 
+  const markNewsRead = useCallback(async () => {
+    // Marking on open, not on scroll: the badge answers "is there anything
+    // I have not looked at", and opening the tab is looking at it.
+    await writeSeenNewsIds(news.map((n) => n.id));
+    setSeenNews(new Set(news.map((n) => n.id)));
+  }, [news]);
+
   const setPref = useCallback(async (patch: Partial<PanelPrefs>) => {
     setPrefs(await writePanelPrefs(patch));
   }, []);
@@ -208,6 +235,7 @@ export const Panel = () => {
     overdue: tally.overdue,
     done: tally.completed,
     calendar: 0,
+    news: unreadNews,
     courses: 0,
   };
 
@@ -252,7 +280,10 @@ export const Panel = () => {
             role="tab"
             class={tab === t.id ? 'tab on' : 'tab'}
             aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => {
+              setTab(t.id);
+              if (t.id === 'news') void markNewsRead();
+            }}
           >
             <span>{t.label}</span>
             {tabCount[t.id] > 0 && (
@@ -318,6 +349,8 @@ export const Panel = () => {
             empty={{ line: 'Nothing finished yet.', sub: 'Tick something off and it moves here.' }}
           />
         )}
+
+        {tab === 'news' && <News posts={visibleNews} seen={seenNews} courses={courseById} now={now} />}
 
         {tab === 'courses' && (
           <Courses
@@ -845,4 +878,67 @@ function Troubleshoot({ diagnostics }: { diagnostics: () => string }) {
 const isWorthShowing = (course: Course | undefined, withItems: ReadonlySet<string>): boolean => {
   if (course === undefined) return true;
   return course.looksAcademic || withItems.has(course.id);
+};
+
+// --- announcements ---------------------------------------------------------
+
+type NewsProps = {
+  posts: readonly Announcement[];
+  seen: ReadonlySet<string>;
+  courses: ReadonlyMap<string, Course>;
+  now: number;
+};
+
+/**
+ * What instructors have posted, newest first.
+ *
+ * No checkbox and no due date: an announcement is something to read, and
+ * giving it the shape of a task would put it in competition with real
+ * deadlines for the same attention.
+ */
+function News({ posts, seen, courses, now }: NewsProps) {
+  if (posts.length === 0) {
+    return (
+      <Empty copy={{ line: 'No announcements yet.', sub: 'New posts from your courses land here.' }} />
+    );
+  }
+
+  return (
+    <div class="section" style="padding-top:8px">
+      {posts.map((post) => {
+        const course = courses.get(post.courseId) ?? null;
+        const isNew = !seen.has(post.id);
+
+        return (
+          <a
+            class={isNew ? 'post new' : 'post'}
+            key={post.id}
+            href={post.url}
+            target="_top"
+            rel="noreferrer"
+            style={colorVars(post.courseId)}
+          >
+            <div class="posthead">
+              {course !== null && (
+                <span class="course">{shortCourseLabel(course.code, course.name)}</span>
+              )}
+              {isNew && <span class="flag new">new</span>}
+              <span class="postwhen">{formatPosted(post.postedAt, now)}</span>
+            </div>
+            <div class="posttitle">{post.title}</div>
+            {post.summary !== '' && <div class="postbody">{post.summary}</div>}
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+const formatPosted = (at: number | null, now: number): string => {
+  if (at === null) return '';
+  const days = Math.round((now - at) / 86_400_000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days} days ago`;
+  return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
