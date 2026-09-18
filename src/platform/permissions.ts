@@ -27,11 +27,15 @@ export const hasOrigins = async (origins: readonly string[]): Promise<boolean> =
   }
 };
 
-export const requestOrigins = async (origins: readonly string[]): Promise<boolean> => {
+/**
+ * Asks for specific hosts. Synchronous up to the request for the same reason
+ * as requestAllOptional: the gesture window closes at the first await.
+ */
+export const requestOrigins = (origins: readonly string[]): Promise<boolean> => {
   try {
-    return await chrome.permissions.request({ origins: [...origins] });
+    return chrome.permissions.request({ origins: [...origins] });
   } catch {
-    return false;
+    return Promise.resolve(false);
   }
 };
 
@@ -120,12 +124,23 @@ export const OPTIONAL_ORIGINS = CATALOGUE.filter((h) => !h.required).map((h) => 
  * Chrome allows one request per gesture, so asking per host would need a
  * separate click each and most people would stop after the first.
  */
-export const requestMissing = async (): Promise<boolean> => {
-  const statuses = await hostStatuses();
-  const missing = statuses.filter((h) => !h.granted && !h.required).map((h) => h.origin);
-  if (missing.length === 0) return true;
-
-  const granted = await requestOrigins(missing);
-  if (granted) await registerScheduleScript();
-  return granted;
+/**
+ * Asks for every optional host, in one prompt, with nothing awaited first.
+ *
+ * chrome.permissions.request needs a user gesture, and the gesture window
+ * closes at the first await. The previous version checked which hosts were
+ * missing before asking, and those checks were themselves awaits, so by the
+ * time it asked the gesture was spent and Chrome declined to prompt at all.
+ * That failure is silent: the call simply resolves false.
+ *
+ * So the request goes first, synchronously, for the whole set. Asking for a
+ * host that is already granted is free, which makes computing the missing
+ * set an optimisation that cost the entire feature.
+ */
+export const requestAllOptional = (): Promise<boolean> => {
+  try {
+    return chrome.permissions.request({ origins: [...OPTIONAL_ORIGINS] });
+  } catch {
+    return Promise.resolve(false);
+  }
 };

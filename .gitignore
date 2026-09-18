@@ -9,3 +9,6 @@ Thumbs.db
 # textitems.json extracts are committed instead; the originals carry
 # instructor names and contact details and must not be published.
 corpus-private/
+
+# Agent skills installed by modern-web-guidance. Vendored, not ours.
+.agents/

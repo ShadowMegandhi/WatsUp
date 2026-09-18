@@ -33,7 +33,7 @@ import {
   hasOrigins,
   hostStatuses,
   registerScheduleScript,
-  requestMissing,
+  requestAllOptional,
   requestOrigins,
   type HostStatus,
 } from '@platform/permissions';
@@ -111,27 +111,46 @@ const App = () => {
 
   // One prompt for everything missing. Chrome allows one request per
   // gesture, so asking per host would need a separate click each.
-  const grantAll = useCallback(async () => {
-    const ok = await requestMissing();
-    setDenied(!ok);
-    setHosts(await hostStatuses());
-    setAllowedSchedule(await hasOrigins(SCHEDULE_ORIGINS));
-    setAllowedOutline(await hasOrigins(OUTLINE_ORIGINS));
+  const grantAll = useCallback(() => {
+    // Not async, and nothing is awaited before the request. The gesture window
+    // closes at the first await, and Chrome then declines to prompt at all,
+    // silently, which is what made this button appear to do nothing.
+    requestAllOptional()
+      .then(async (ok) => {
+        setDenied(!ok);
+        if (ok) await registerScheduleScript();
+        setHosts(await hostStatuses());
+        setAllowedSchedule(await hasOrigins(SCHEDULE_ORIGINS));
+        setAllowedOutline(await hasOrigins(OUTLINE_ORIGINS));
+      })
+      .catch(() => setDenied(true));
   }, []);
 
-  const connectSchedule = useCallback(async () => {
-    const granted = await requestOrigins(SCHEDULE_ORIGINS);
-    if (!granted) return;
-    await registerScheduleScript();
-    setAllowedSchedule(true);
-    void chrome.tabs.create({ url: QUEST });
+  const connectSchedule = useCallback(() => {
+    requestOrigins(SCHEDULE_ORIGINS)
+      .then(async (granted) => {
+        if (!granted) {
+          setDenied(true);
+          return;
+        }
+        await registerScheduleScript();
+        setAllowedSchedule(true);
+        void chrome.tabs.create({ url: QUEST });
+      })
+      .catch(() => setDenied(true));
   }, []);
 
-  const connectOutline = useCallback(async () => {
-    const granted = await requestOrigins(OUTLINE_ORIGINS);
-    if (!granted) return;
-    setAllowedOutline(true);
-    void chrome.tabs.create({ url: OUTLINE });
+  const connectOutline = useCallback(() => {
+    requestOrigins(OUTLINE_ORIGINS)
+      .then((granted) => {
+        if (!granted) {
+          setDenied(true);
+          return;
+        }
+        setAllowedOutline(true);
+        void chrome.tabs.create({ url: OUTLINE });
+      })
+      .catch(() => setDenied(true));
   }, []);
 
   const showPanel = useCallback(async () => {
