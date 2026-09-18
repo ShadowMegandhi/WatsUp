@@ -29,7 +29,7 @@ export interface SyllabusOutcome {
 }
 
 const PDF = /\.pdf(\?|$)/i;
-const TEXTUAL = /\.(html?|txt|md)(\?|$)/i;
+const UNREADABLE = /\.docx?(\?|$)/i;
 
 export const syncSyllabus = async (
   fetcher: Fetcher,
@@ -91,24 +91,45 @@ export const syncSyllabus = async (
 const SEP = "; ";
 
 /** Reads one document, choosing the reader by file type. */
+/**
+ * Reads one document, deciding how by looking at it rather than at its name.
+ *
+ * D2L reports an uploaded outline as type "File" with a viewContent URL that
+ * carries no extension, so routing on the filename rejected exactly the
+ * documents most worth reading. Fetching first and checking the leading bytes
+ * settles it: a PDF announces itself, and anything else is treated as markup.
+ */
 const readDocument = async (
   fetcher: Fetcher,
   url: string,
   typeIdentifier: string,
   title: string,
 ): Promise<{ value: readonly string[]; error: string | null }> => {
-  if (PDF.test(url) || PDF.test(title)) {
-    const pdf = await extractPdfLines(url);
-    return { value: pdf.lines, error: pdf.error };
+  if (UNREADABLE.test(url) || UNREADABLE.test(title)) {
+    return { value: [], error: "Word documents cannot be read yet" };
   }
 
-  if (typeIdentifier === 'Html' || TEXTUAL.test(url) || TEXTUAL.test(title) || typeIdentifier === '') {
-    const text = await fetchText(fetcher, url);
-    if (text === null) return { value: [], error: null };
-    return { value: toLines(text), error: null };
+  // A name that already says PDF saves a round trip.
+  if (PDF.test(url) || PDF.test(title)) return await readPdf(url);
+
+  if (typeIdentifier === 'Link') {
+    return { value: [], error: "Syllabus is a link to another site" };
   }
 
-  return { value: [], error: "Not a readable document type" };
+  const text = await fetchText(fetcher, url);
+  if (text === null) return { value: [], error: "Could not open the syllabus" };
+
+  // A PDF fetched as text still begins with its signature.
+  if (text.slice(0, 1024).includes("%PDF")) return await readPdf(url);
+
+  const parsed = toLines(text);
+  if (parsed.length === 0) return { value: [], error: "Syllabus had no readable text" };
+  return { value: parsed, error: null };
+};
+
+const readPdf = async (url: string): Promise<{ value: readonly string[]; error: string | null }> => {
+  const pdf = await extractPdfLines(url);
+  return { value: pdf.lines, error: pdf.error };
 };
 const fetchText = async (fetcher: Fetcher, url: string): Promise<string | null> => {
   const path = url.startsWith(LEARN_ORIGIN) ? url.slice(LEARN_ORIGIN.length) : url;

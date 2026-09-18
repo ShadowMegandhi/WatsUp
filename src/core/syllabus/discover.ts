@@ -19,10 +19,10 @@ export interface ScoredTopic extends TocTopic {
 }
 
 /** Below this a topic is not treated as a syllabus at all. */
-export const SYLLABUS_THRESHOLD = 5;
+export const SYLLABUS_THRESHOLD = 3;
 
 /** How many documents to read per course, best first. */
-export const MAX_DOCS_PER_COURSE = 2;
+export const MAX_DOCS_PER_COURSE = 3;
 
 export const scoreTopic = (topic: TocTopic, now: number): number => {
   const t = topic.title.toLowerCase();
@@ -35,6 +35,16 @@ export const scoreTopic = (topic: TocTopic, now: number): number => {
   if (/course\s+(schedule|calendar)/.test(t)) score += 3;
   if (/\b(outline|syllabus)\b/.test(m)) score += 2;
   if (/(start here|course info|overview|administration|assessment|evaluation)/.test(m)) score += 2;
+
+  // Names seen in the wild that the first pass missed entirely.
+  if (/\b(handbook|overview|expectations|important dates|key dates)\b/.test(t)) score += 3;
+  if (/\b(assessment|evaluation|grading|deadlines|timetable)\b/.test(t)) score += 3;
+  if (/\b(read me|start here|begin here)\b/.test(t)) score += 2;
+  if (/\bwelcome\b/.test(t) && /\b(course|start)\b/.test(t)) score += 2;
+
+  // A document sitting in an obviously introductory module is very often the
+  // outline, whatever it happens to be called.
+  if (/(welcome|admin|general|getting started)/.test(m)) score += 2;
 
   if (/\.(pdf|docx?)$/.test(t) || topic.typeIdentifier === 'Html') score += 2;
   if (/\b(revised|updated|v2)\b/.test(t)) score += 1;

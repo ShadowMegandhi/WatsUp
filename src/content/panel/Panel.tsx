@@ -136,10 +136,16 @@ export const Panel = () => {
 
   const courseById = useMemo(() => new Map(courses.map((c) => [c.id, c])), [courses]);
 
+  // Any enrolment that produced coursework counts, regardless of naming.
+  const withItems = useMemo(
+    () => new Set(items.map((i) => i.courseId)),
+    [items],
+  );
+
   const resolved = useMemo<readonly ResolvedTask[]>(() => {
     const showOther = prefs?.showOtherEnrolments ?? false;
     return items
-      .filter((i) => showOther || (courseById.get(i.courseId)?.looksAcademic ?? true))
+      .filter((i) => showOther || isWorthShowing(courseById.get(i.courseId), withItems))
       .map((i) => resolve(i, overrides[i.id] ?? null, courseById.get(i.courseId) ?? null, now));
   }, [items, overrides, courseById, now, prefs?.showOtherEnrolments]);
 
@@ -663,7 +669,8 @@ type CoursesProps = {
  */
 function Courses({ courses, health, items, portal, diagnostics }: CoursesProps) {
   const healthById = new Map(health.map((h) => [h.courseId, h]));
-  const shown = courses.filter((c) => c.looksAcademic);
+  const withWork = new Set(items.map((i) => i.courseId));
+  const shown = courses.filter((c) => c.looksAcademic || withWork.has(c.id));
   const list = shown.length > 0 ? shown : courses;
 
   if (list.length === 0) {
@@ -799,3 +806,15 @@ function Troubleshoot({ diagnostics }: { diagnostics: () => string }) {
     </div>
   );
 }
+
+/**
+ * Whether an enrolment belongs in the default view.
+ *
+ * Name shape alone is not enough: plenty of real courses are titled in prose
+ * with no course code anywhere, and hiding one takes its assignments with it.
+ * Carrying actual coursework settles the question.
+ */
+const isWorthShowing = (course: Course | undefined, withItems: ReadonlySet<string>): boolean => {
+  if (course === undefined) return true;
+  return course.looksAcademic || withItems.has(course.id);
+};
