@@ -31,8 +31,11 @@ import {
   OUTLINE_ORIGINS,
   SCHEDULE_ORIGINS,
   hasOrigins,
+  hostStatuses,
   registerScheduleScript,
+  requestMissing,
   requestOrigins,
+  type HostStatus,
 } from '@platform/permissions';
 
 const QUEST = 'https://quest.pecs.uwaterloo.ca/';
@@ -48,6 +51,8 @@ const App = () => {
   const [openHelp, setOpenHelp] = useState<string | null>(null);
   const [allowedSchedule, setAllowedSchedule] = useState(true);
   const [allowedOutline, setAllowedOutline] = useState(true);
+  const [hosts, setHosts] = useState<readonly HostStatus[]>([]);
+  const [denied, setDenied] = useState(false);
 
   const load = useCallback(async () => {
     const [items, courses, overrides, s, p, cap, h] = await Promise.all([
@@ -78,6 +83,7 @@ const App = () => {
     // rather than assumed.
     setAllowedSchedule(await hasOrigins(SCHEDULE_ORIGINS));
     setAllowedOutline(await hasOrigins(OUTLINE_ORIGINS));
+    setHosts(await hostStatuses());
   }, []);
 
   useEffect(() => {
@@ -101,6 +107,16 @@ const App = () => {
 
   const open = useCallback((url: string) => {
     void chrome.tabs.create({ url });
+  }, []);
+
+  // One prompt for everything missing. Chrome allows one request per
+  // gesture, so asking per host would need a separate click each.
+  const grantAll = useCallback(async () => {
+    const ok = await requestMissing();
+    setDenied(!ok);
+    setHosts(await hostStatuses());
+    setAllowedSchedule(await hasOrigins(SCHEDULE_ORIGINS));
+    setAllowedOutline(await hasOrigins(OUTLINE_ORIGINS));
   }, []);
 
   const connectSchedule = useCallback(async () => {
@@ -139,6 +155,10 @@ const App = () => {
       </header>
 
       <main>
+        {hosts.some((h) => !h.granted) && (
+          <Access hosts={hosts} denied={denied} onGrant={grantAll} />
+        )}
+
         {tally !== null && (
           <div class="tally">
             <Stat n={tally.overdue} label="Overdue" tone="bad" />
@@ -299,3 +319,52 @@ const Stat = ({ n, label, tone }: { n: number; label: string; tone: string }) =>
 
 const root = document.getElementById('root');
 if (root !== null) render(<App />, root);
+
+type AccessProps = {
+  hosts: readonly HostStatus[];
+  denied: boolean;
+  onGrant: () => void;
+};
+
+/**
+ * Which sites the extension may read, and a way to fix it.
+ *
+ * Shown whenever anything is missing, rather than behind a check that could
+ * itself be wrong. A withheld host is the one failure that looks identical to
+ * every other failure from the outside, so it gets stated plainly and given a
+ * button, with the manual route named for when Chrome declines to prompt.
+ */
+function Access({ hosts, denied, onGrant }: AccessProps) {
+  const missing = hosts.filter((h) => !h.granted);
+
+  return (
+    <div class="access">
+      <div class="accesstitle">Site access needed</div>
+      <div class="accessdetail">
+        Chrome holds these back until you allow them. Nothing works on a site that is not allowed.
+      </div>
+
+      <ul class="hostlist">
+        {hosts.map((h) => (
+          <li key={h.origin} class={h.granted ? 'on' : 'off'}>
+            <span class="hostmark">{h.granted ? '\u2713' : '\u00d7'}</span>
+            <span>{h.label}</span>
+            {h.required && !h.granted && <span class="req">required</span>}
+          </li>
+        ))}
+      </ul>
+
+      <button type="button" class="stepbtn" onClick={onGrant}>
+        <span class="plus">+</span>
+        Allow {missing.length} {missing.length === 1 ? 'site' : 'sites'}
+      </button>
+
+      {denied && (
+        <div class="fallback">
+          Chrome did not grant it. Open <code>chrome://extensions</code>, click Details under LEARN
+          Tracker, and set Site access to On all sites.
+        </div>
+      )}
+    </div>
+  );
+}

@@ -176,3 +176,42 @@ body { width: 330px; }
   color: var(--muted); font-size: 11.5px; line-height: 1.55;
 }
 .help li { margin-bottom: 3px; }
+
+/* ---- site access ---- */
+
+.access {
+  border: 1px solid var(--warn);
+  border-radius: 10px;
+  padding: 11px;
+  margin-bottom: 10px;
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+}
+
+.accesstitle { font-weight: 700; font-size: 12.5px; color: var(--warn); }
+.accessdetail { color: var(--muted); font-size: 11.5px; margin-top: 3px; }
+
+.hostlist { list-style: none; margin: 9px 0 0; padding: 0; }
+.hostlist li {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 11.5px; padding: 2px 0; color: var(--muted);
+}
+.hostlist li.on { color: var(--ok); }
+.hostlist li.off { color: var(--fg); }
+
+.hostmark {
+  width: 14px; height: 14px; flex: none;
+  display: grid; place-items: center;
+  border-radius: 4px; font-size: 10px; font-weight: 800;
+}
+.hostlist li.on .hostmark { background: var(--ok); color: #fff; }
+.hostlist li.off .hostmark { background: var(--bad); color: #fff; }
+
+.req { color: var(--bad); font-weight: 650; font-size: 10.5px; }
+
+.fallback {
+  margin-top: 9px; font-size: 11px; line-height: 1.5;
+  color: var(--muted); border-top: 1px solid var(--line); padding-top: 8px;
+}
+.fallback code {
+  background: var(--chip); padding: 1px 4px; border-radius: 4px; font-size: 10.5px;
+}

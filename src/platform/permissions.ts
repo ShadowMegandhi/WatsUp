@@ -80,3 +80,52 @@ export const registerScheduleScript = async (): Promise<boolean> => {
     return true;
   }
 };
+
+export interface HostStatus {
+  readonly origin: string;
+  readonly label: string;
+  readonly granted: boolean;
+  readonly required: boolean;
+}
+
+const CATALOGUE: readonly { origin: string; label: string; required: boolean }[] = [
+  { origin: 'https://learn.uwaterloo.ca/*', label: 'LEARN', required: true },
+  { origin: 'https://quest.pecs.uwaterloo.ca/*', label: 'Quest', required: false },
+  { origin: 'https://portal.uwaterloo.ca/*', label: 'Portal', required: false },
+  { origin: 'https://outline.uwaterloo.ca/*', label: 'Course outlines', required: false },
+];
+
+/**
+ * The status of every host, checked one at a time.
+ *
+ * Asking about several at once answers only whether all of them are held,
+ * which cannot say which one is missing, and a single missing host is exactly
+ * the situation worth reporting.
+ */
+export const hostStatuses = async (): Promise<readonly HostStatus[]> =>
+  Promise.all(
+    CATALOGUE.map(async (h) => ({
+      origin: h.origin,
+      label: h.label,
+      required: h.required,
+      granted: await hasOrigins([h.origin]),
+    })),
+  );
+
+export const OPTIONAL_ORIGINS = CATALOGUE.filter((h) => !h.required).map((h) => h.origin);
+
+/**
+ * Asks for everything still missing, in one prompt.
+ *
+ * Chrome allows one request per gesture, so asking per host would need a
+ * separate click each and most people would stop after the first.
+ */
+export const requestMissing = async (): Promise<boolean> => {
+  const statuses = await hostStatuses();
+  const missing = statuses.filter((h) => !h.granted && !h.required).map((h) => h.origin);
+  if (missing.length === 0) return true;
+
+  const granted = await requestOrigins(missing);
+  if (granted) await registerScheduleScript();
+  return granted;
+};
