@@ -13,6 +13,7 @@
 
 import { parseScheduleText } from './parse';
 import { parseDatedEvents, type DatedEvent } from './events';
+import { parseQuestRows, expandSessions } from './questTable';
 import { emptySchedule, type TermSchedule } from '@core/schedule/types';
 
 const SAMPLE_CHARS = 4000;
@@ -35,8 +36,26 @@ export interface PortalCapture {
 
 export const captureFromDocument = (doc: Document, now: number): PortalCapture => {
   const text = visibleText(doc);
-  const meetings = parseScheduleText(text);
-  const events = parseDatedEvents(text);
+  const meetings =
+    parseQuestRows(text).length > 0 ? [] : parseScheduleText(text);
+  // Quest states its schedule exactly, including the reading-week gap, so
+  // expanding what it says beats anything inferred from a weekly pattern.
+  // Where it yields nothing, the generic dated-event reader still applies.
+  const questRows = parseQuestRows(text);
+  const questSessions = expandSessions(questRows);
+
+  const events: readonly DatedEvent[] =
+    questSessions.length > 0
+      ? questSessions.map((q) => ({
+          title: `${q.courseCode} ${q.section}`,
+          courseCode: q.courseCode,
+          kind: q.kind,
+          startsAt: q.startsAt,
+          endsAt: q.endsAt,
+          location: q.room,
+          sourceLine: `${q.courseCode} ${q.section}`,
+        }))
+      : parseDatedEvents(text);
 
   return {
     schedule: {
