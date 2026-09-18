@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LEARN Tracker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "All your UW LEARN assignments, quizzes and deadlines in one place. Not affiliated with the University of Waterloo.",
   "minimum_chrome_version": "120",
   "permissions": [

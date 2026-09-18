@@ -40,6 +40,10 @@ export default defineConfig(({ mode }) => ({
       process.env.LEARN_ORIGIN ?? 'https://learn.uwaterloo.ca',
     ),
     __DEV_TOOLS__: JSON.stringify(mode !== 'production'),
+    // Stamped at build time so a stale load is visible rather than inferred.
+    __BUILD_ID__: JSON.stringify(
+      new Date().toISOString().slice(5, 16).replace('T', ' '),
+    ),
   },
   build: {
     outDir: 'dist',

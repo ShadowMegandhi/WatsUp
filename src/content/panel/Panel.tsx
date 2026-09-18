@@ -219,7 +219,28 @@ export const Panel = () => {
     setPrefs(await writePanelPrefs(patch));
   }, []);
 
-  if (prefs === null || prefs.hidden) return null;
+  if (prefs === null) return null;
+
+  if (prefs.hidden) {
+    return (
+      <button
+        type="button"
+        class="edge"
+        onClick={() => void setPref({ hidden: false })}
+        aria-label={
+          attention > 0
+            ? `Reopen LEARN Tracker, ${attention} due soon`
+            : 'Reopen LEARN Tracker'
+        }
+        title="Reopen LEARN Tracker"
+      >
+        <span class="edgeplus" aria-hidden="true">
+          +
+        </span>
+        {attention > 0 && <span class="edgecount">{attention}</span>}
+      </button>
+    );
+  }
 
   if (prefs.minimized) {
     const overdue = tally.overdue;
@@ -422,6 +443,9 @@ export const Panel = () => {
 
       <div class="foot">
         <span>{formatSyncedAt(syncState?.lastSuccessAt ?? null, now)}</span>
+        <span class="build" title="Build date, so a stale load is obvious">
+          {__BUILD_ID__}
+        </span>
         <button type="button" class="linkbtn" onClick={sync}>
           Refresh now
         </button>
