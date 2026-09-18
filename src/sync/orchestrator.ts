@@ -121,9 +121,14 @@ export const runSync = async (
       // invalidated by age and by the parser version, so a shipped fix to
       // the reading rules still takes effect on an existing install.
       const cached = await readSyllabusCache(course.id);
+      // A cached result is stale the moment the schedule it could not use
+      // arrives. The earlier check only caught a cache with nothing in it,
+      // which missed the common case: a course that found its midterm but
+      // could not place its tutorial series, and so looked cached and fine.
+      const captureAt = capture?.schedule.capturedAt ?? 0;
       const fresh =
         syllabusCacheIsFresh(cached, now, LEXICON_VERSION, SYLLABUS_TTL_MS) &&
-        !(sessions.length > 0 && (cached?.items.length ?? 0) === 0);
+        captureAt <= (cached?.parsedAt ?? 0);
 
       const syllabus = fresh
         ? null

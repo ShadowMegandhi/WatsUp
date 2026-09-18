@@ -99,3 +99,55 @@ describe('placeRecurring', () => {
     expect(r.items).toHaveLength(9);
   });
 });
+
+describe('matching LEARN course codes to Quest ones', () => {
+  const sessions: readonly DatedSession[] = [
+    { courseCode: 'MATH 102', kind: 'TUT', startsAt: new Date(2026, 8, 18, 11, 30).getTime() },
+    { courseCode: 'MATH 102', kind: 'TUT', startsAt: new Date(2026, 8, 25, 11, 30).getTime() },
+  ];
+
+  const series: RecurringAssessment = {
+    title: 'Tutorial Assignment',
+    kind: 'TUT',
+    count: 2,
+    weightPct: null,
+    sourceLine: 'Tutorial Assignments (best 1 of 2)',
+  };
+
+  it('matches the LEARN code that carries instructor and term', () => {
+    // This is the real shape: LEARN says MATH102_instr_1269, Quest says
+    // MATH 102. Comparing them with punctuation merely stripped never matched.
+    const r = placeRecurring(
+      [series],
+      sessions,
+      '100007',
+      'MATH102_instr_1269',
+      DOC,
+      NOW,
+    );
+    expect(r.items).toHaveLength(2);
+  });
+
+  it('matches a bare code', () => {
+    const r = placeRecurring([series], sessions, '100007', 'MATH 102', DOC, NOW);
+    expect(r.items).toHaveLength(2);
+  });
+
+  it('still refuses a genuinely different course', () => {
+    const r = placeRecurring([series], sessions, '100008', 'MATH101_instr_1269', DOC, NOW);
+    expect(r.items).toEqual([]);
+  });
+
+  it('matches a course with a letter suffix', () => {
+    const withSuffix = [{ courseCode: 'CS 136L', kind: 'TUT', startsAt: NOW }];
+    const r = placeRecurring(
+      [{ ...series, count: 1 }],
+      withSuffix,
+      '1',
+      'CS136L_someone_1269',
+      DOC,
+      NOW,
+    );
+    expect(r.items).toHaveLength(1);
+  });
+});

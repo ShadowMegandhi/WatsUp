@@ -94,6 +94,20 @@ export const buildDiagnostics = (input: DiagnosticsInput): string => {
         out.push(`    ${when}  [${course} / ${kind}]  ${title}`);
       }
       if (sessions.length > 20) out.push(`    ... and ${sessions.length - 20} more`);
+
+      out.push('');
+      out.push('  courses named by the schedule:');
+      const named = new Set(
+        sessions
+          .map((e) => (typeof e.courseCode === 'string' ? e.courseCode : ''))
+          .filter((c) => c !== ''),
+      );
+      out.push(`    ${[...named].join(', ') || 'none'}`);
+      out.push('  courses named by LEARN:');
+      out.push(`    ${courses.map((c) => c.code || c.name).join(', ')}`);
+    }
+
+    if (sessions.length === 0) {
     }
 
     out.push('  --- text the page showed, first 1500 characters ---');

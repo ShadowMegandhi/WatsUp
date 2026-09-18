@@ -109,4 +109,15 @@ const sessionsFor = (
     .sort((a, b) => a - b);
 };
 
-const normalize = (code: string): string => code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+/**
+ * Both sides reduced to subject and catalog number.
+ *
+ * LEARN names a course MATH102_instr_1269, carrying the instructor and
+ * term, while Quest names it MATH 102. Comparing those with punctuation
+ * merely stripped never matches, which silently discarded every session.
+ */
+const normalize = (code: string): string => {
+  const m = /([A-Za-z]{2,6})[ _-]?([0-9]{3}[A-Za-z]?)/.exec(code);
+  if (m !== null) return `${(m[1] ?? "").toUpperCase()}${(m[2] ?? "").toUpperCase()}`;
+  return code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+};

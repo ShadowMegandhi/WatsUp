@@ -15,6 +15,7 @@ import { flattenToc, pickSyllabusTopics } from '@core/syllabus/discover';
 import { extractCandidates, nearMisses } from '@core/syllabus/extract';
 import { parseRecurring } from '@core/syllabus/recurring';
 import { placeRecurring } from '@core/syllabus/placeRecurring';
+import { shortCourseLabel } from '@core/courseColor';
 import type { DatedSession } from '@core/syllabus/sessions';
 import { termFrom } from '@core/syllabus/dates';
 import { candidatesToItems, dropDuplicatesOfLearn } from '@core/syllabus/toItems';
@@ -76,7 +77,7 @@ export const syncSyllabus = async (
       parseRecurring(lines.value),
       sessions,
       course.id,
-      course.code || course.name,
+      shortCourseLabel(course.code, course.name),
       { topicId: topic.id, title: topic.title, url: topic.url },
       now,
     );
