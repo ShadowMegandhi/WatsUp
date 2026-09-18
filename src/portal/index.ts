@@ -61,6 +61,13 @@ let announced = false;
  */
 const announce = (sessions: number, saved: boolean): void => {
   if (announced) return;
+
+  // Quest renders through several nested frames and this runs in all of
+  // them, so only the frame that found something speaks, and the top frame
+  // speaks when nothing did. Otherwise a single page stacks a dozen toasts.
+  const isTop = window.top === window;
+  if (!isTop && sessions === 0) return;
+
   announced = true;
 
   if (!saved) {
