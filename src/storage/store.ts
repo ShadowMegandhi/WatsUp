@@ -243,3 +243,21 @@ export const writePortalCapture = (capture: StoredPortalCapture): Promise<boolea
 
 export const readPortalCapture = (): Promise<StoredPortalCapture | null> =>
   get<StoredPortalCapture | null>('portalCapture', null);
+
+// --- reset ----------------------------------------------------------------
+
+/**
+ * Clears everything derived, keeping everything the user owns.
+ *
+ * Items, health and caches can all be rebuilt from LEARN, so throwing them
+ * away costs a sync. Overrides and panel preferences cannot be rebuilt from
+ * anywhere, so they survive: a reset must never silently discard which things
+ * someone has ticked off.
+ */
+export const clearDerived = async (): Promise<void> => {
+  const all = await area().get(null);
+  const keep = new Set<string>([K.overrides, K.panel, K.schemaVersion]);
+
+  const doomed = Object.keys(all).filter((key) => !keep.has(key));
+  if (doomed.length > 0) await area().remove(doomed);
+};

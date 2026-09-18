@@ -24,6 +24,7 @@ import {
   readCourses,
   readOverrides,
   readSyncState,
+  clearDerived,
   writeProbeReportCompat,
 } from '@storage/storeCompat';
 
@@ -101,6 +102,11 @@ const refreshBadge = async (): Promise<void> => {
 
 const handleCommand = async (command: Command): Promise<CommandReply> => {
   switch (command.type) {
+    case 'reset-and-sync':
+      await clearDerived();
+      await sync(true);
+      return { type: 'status', status: await status() };
+
     case 'sync-now':
       await sync(true);
       return { type: 'status', status: await status() };

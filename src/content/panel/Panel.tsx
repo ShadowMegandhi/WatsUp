@@ -35,11 +35,13 @@ import {
   readSeenIds,
   readAllHealth,
   readPortalCapture,
+  type StoredPortalCapture,
   toggleCompletion,
   writePanelPrefs,
 } from '@storage/store';
 import { LEARN_ORIGIN } from '@shared/constants';
 import { formatDue, formatSyncedAt, urgency, KIND_LABEL } from './format';
+import { buildDiagnostics } from './diagnostics';
 
 type Tab = 'assigned' | 'overdue' | 'done' | 'calendar' | 'courses';
 
@@ -83,6 +85,7 @@ export const Panel = () => {
   const [newIds, setNewIds] = useState<ReadonlySet<string>>(new Set());
   const [health, setHealth] = useState<readonly CourseHealth[]>([]);
   const [portal, setPortal] = useState<{ meetings: number; term: string | null } | null>(null);
+  const [rawPortal, setRawPortal] = useState<StoredPortalCapture | null>(null);
 
   const [tab, setTab] = useState<Tab>('assigned');
   const [query, setQuery] = useState('');
@@ -105,6 +108,7 @@ export const Panel = () => {
     setHealth(h);
 
     const capture = await readPortalCapture();
+    setRawPortal(capture);
     setPortal(
       capture === null
         ? null
@@ -283,7 +287,22 @@ export const Panel = () => {
         )}
 
         {tab === 'courses' && (
-          <Courses courses={courses} health={health} items={items} portal={portal} />
+          <Courses
+            courses={courses}
+            health={health}
+            items={items}
+            portal={portal}
+            diagnostics={() =>
+              buildDiagnostics({
+                items,
+                courses,
+                health,
+                syncState,
+                portal: rawPortal,
+                now: Date.now(),
+              })
+            }
+          />
         )}
 
         {tab === 'calendar' && (
@@ -632,6 +651,7 @@ type CoursesProps = {
   health: readonly CourseHealth[];
   items: readonly TaskItem[];
   portal: { meetings: number; term: string | null } | null;
+  diagnostics: () => string;
 };
 
 /**
@@ -641,7 +661,7 @@ type CoursesProps = {
  * found look identical from the outside. A student who cannot tell which one
  * happened has no way to know whether to trust the list.
  */
-function Courses({ courses, health, items, portal }: CoursesProps) {
+function Courses({ courses, health, items, portal, diagnostics }: CoursesProps) {
   const healthById = new Map(health.map((h) => [h.courseId, h]));
   const shown = courses.filter((c) => c.looksAcademic);
   const list = shown.length > 0 ? shown : courses;
@@ -653,6 +673,7 @@ function Courses({ courses, health, items, portal }: CoursesProps) {
   return (
     <div class="section" style="padding-top:8px">
       <PortalRow portal={portal} />
+      <Troubleshoot diagnostics={diagnostics} />
       {list.map((course) => {
         const h = healthById.get(course.id);
         const count = items.filter((i) => i.courseId === course.id).length;
@@ -721,6 +742,59 @@ function PortalRow({ portal }: { portal: { meetings: number; term: string | null
             Open Portal
           </a>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The two things worth doing when something looks wrong.
+ *
+ * A reset exists because a cache can hold an empty result and there is
+ * otherwise no way to ask for another attempt. It keeps ticked-off state,
+ * which cannot be rebuilt from anywhere.
+ */
+function Troubleshoot({ diagnostics }: { diagnostics: () => string }) {
+  const [copied, setCopied] = useState(false);
+  const [resetting, setResetting] = useState(false);
+
+  const copy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(diagnostics());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // Clipboard can be refused by the page. The reset button still works.
+    }
+  }, [diagnostics]);
+
+  const reset = useCallback(async () => {
+    setResetting(true);
+    try {
+      await chrome.runtime.sendMessage({ type: 'reset-and-sync' });
+    } catch {
+      // The worker may have been evicted; storage updates arrive either way.
+    } finally {
+      setTimeout(() => setResetting(false), 4000);
+    }
+  }, []);
+
+  return (
+    <div class="crow tools">
+      <span class="cdot" />
+      <div class="main">
+        <span class="name">Something look wrong?</span>
+        <div class="note">
+          Start fresh reads everything again from LEARN. Anything ticked off stays ticked.
+        </div>
+        <div class="toolrow">
+          <button type="button" class="toolbtn" onClick={reset} disabled={resetting}>
+            {resetting ? 'Starting fresh...' : 'Start fresh'}
+          </button>
+          <button type="button" class="toolbtn ghost" onClick={copy}>
+            {copied ? 'Copied' : 'Copy diagnostics'}
+          </button>
+        </div>
       </div>
     </div>
   );

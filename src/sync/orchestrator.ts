@@ -112,7 +112,12 @@ export const runSync = async (
         ? null
         : await syncSyllabus(fetcher, course, versions.le, items, now);
 
-      if (syllabus !== null && syllabus.ok) {
+      const worthCaching =
+        syllabus !== null &&
+        syllabus.ok &&
+        (syllabus.value.docsRead > 0 || syllabus.value.docsFound === 0);
+
+      if (worthCaching && syllabus !== null && syllabus.ok) {
         await writeSyllabusCache({
           courseId: course.id,
           parsedAt: now,

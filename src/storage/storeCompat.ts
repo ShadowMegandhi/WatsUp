@@ -12,6 +12,7 @@ export {
   readCourses,
   readOverrides,
   readSyncState,
+  clearDerived,
 } from './store';
 
 export { writeProbeReport as writeProbeReportCompat } from './probeRepo';

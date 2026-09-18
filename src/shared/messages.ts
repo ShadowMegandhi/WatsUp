@@ -51,7 +51,9 @@ export type Command =
   /** Opportunistic: a LEARN page loaded. Honours the minimum interval, so
    *  opening five tabs does not mean five syncs. */
   | { readonly type: 'sync-if-stale' }
-  | { readonly type: 'get-status' };
+  | { readonly type: 'get-status' }
+  /** Throw away derived data and sync again. Keeps ticked-off state. */
+  | { readonly type: 'reset-and-sync' };
 
 export type CommandReply =
   | { readonly type: 'probe-started' }
