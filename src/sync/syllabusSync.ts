@@ -99,6 +99,9 @@ export const syncSyllabus = async (
 
 const SEP = "; ";
 
+/** Below this many finds, report what was skipped so it can be tuned. */
+const NEAR_MISS_UNTIL = 5;
+
 /** Reads one document, choosing the reader by file type. */
 /**
  * Reads one document, deciding how by looking at it rather than at its name.
