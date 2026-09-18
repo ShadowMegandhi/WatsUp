@@ -13,6 +13,9 @@ import { type Result, ok } from '@shared/result';
 import type { AppError } from '@shared/errors';
 import { flattenToc, pickSyllabusTopics } from '@core/syllabus/discover';
 import { extractCandidates, nearMisses } from '@core/syllabus/extract';
+import { parseRecurring } from '@core/syllabus/recurring';
+import { placeRecurring } from '@core/syllabus/placeRecurring';
+import type { DatedSession } from '@core/syllabus/sessions';
 import { termFrom } from '@core/syllabus/dates';
 import { candidatesToItems, dropDuplicatesOfLearn } from '@core/syllabus/toItems';
 import { LEARN_ORIGIN } from '@shared/constants';
@@ -38,6 +41,7 @@ export const syncSyllabus = async (
   le: string,
   learnItems: readonly TaskItem[],
   now: number,
+  sessions: readonly DatedSession[] = [],
 ): Promise<Result<SyllabusOutcome, AppError>> => {
   const empty = { items: [], docsFound: 0, docsRead: 0, note: null } as const;
 
@@ -64,6 +68,21 @@ export const syncSyllabus = async (
 
     read += 1;
     const candidates = extractCandidates(lines.value, term);
+
+    // A syllabus that counts its assessments rather than dating them needs
+    // the calendar to say when the component meets. Neither half is enough
+    // alone, so nothing is placed until both are present.
+    const placed = placeRecurring(
+      parseRecurring(lines.value),
+      sessions,
+      course.id,
+      course.code || course.name,
+      { topicId: topic.id, title: topic.title, url: topic.url },
+      now,
+    );
+    collected.push(...placed.items);
+    for (const note of placed.unplaced) problems.push(`${topic.title}: ${note}`);
+
 
     if (candidates.length < NEAR_MISS_UNTIL) {
       const missed = nearMisses(lines.value, term);

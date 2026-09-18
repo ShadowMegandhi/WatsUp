@@ -33,6 +33,7 @@ import {
   writeSeenIds,
   readSyllabusCache,
   writeSyllabusCache,
+  readPortalCapture,
   syllabusCacheIsFresh,
   readAllItems,
 } from '@storage/store';
@@ -70,6 +71,20 @@ export const runSync = async (
     const courses = toCourses(parseCourses(enrollments.value.json));
     await writeCourses(courses);
 
+    // Real lab and tutorial dates, if any page has yielded them yet.
+    const capture = await readPortalCapture();
+    const sessions = ((capture?.events ?? []) as readonly {
+      courseCode?: unknown;
+      kind?: unknown;
+      startsAt?: unknown;
+    }[])
+      .filter((e) => typeof e.startsAt === "number")
+      .map((e) => ({
+        courseCode: typeof e.courseCode === "string" ? e.courseCode : null,
+        kind: typeof e.kind === "string" ? e.kind : null,
+        startsAt: e.startsAt as number,
+      }));
+
     const previousIds = new Set(await readSeenIds());
     const isFirstEverSync = previousIds.size === 0;
 
@@ -106,11 +121,13 @@ export const runSync = async (
       // invalidated by age and by the parser version, so a shipped fix to
       // the reading rules still takes effect on an existing install.
       const cached = await readSyllabusCache(course.id);
-      const fresh = syllabusCacheIsFresh(cached, now, LEXICON_VERSION, SYLLABUS_TTL_MS);
+      const fresh =
+        syllabusCacheIsFresh(cached, now, LEXICON_VERSION, SYLLABUS_TTL_MS) &&
+        !(sessions.length > 0 && (cached?.items.length ?? 0) === 0);
 
       const syllabus = fresh
         ? null
-        : await syncSyllabus(fetcher, course, versions.le, items, now);
+        : await syncSyllabus(fetcher, course, versions.le, items, now, sessions);
 
       const worthCaching =
         syllabus !== null &&
