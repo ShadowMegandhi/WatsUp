@@ -40,6 +40,9 @@ const ALLOWED_PERMISSIONS = new Set(['storage', 'alarms', 'notifications', 'offs
 const ALLOWED_HOSTS = new Set([
   'https://learn.uwaterloo.ca/*',
   'https://portal.uwaterloo.ca/*',
+  // UW keeps course outlines centrally, not in LEARN, so a syllabus link often
+  // points here and cannot be read without it.
+  'https://outline.uwaterloo.ca/*',
 ]);
 
 for (const p of manifest.permissions ?? []) {

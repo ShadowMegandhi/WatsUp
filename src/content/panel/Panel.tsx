@@ -742,7 +742,7 @@ function PortalRow({ portal }: { portal: { meetings: number; term: string | null
         <div class="note">
           {connected
             ? 'Lab and tutorial times are known, so syllabus work tied to them can be dated.'
-            : 'Open Portal and view your class schedule once. It will be picked up automatically, which lets syllabus items like "Lab 1" get a real date.'}
+            : 'Open Portal, go to Academics, and view your class schedule once. The events calendar is the default page and has no timetable on it.'}
         </div>
         {!connected && (
           <a class="portalbtn" href="https://portal.uwaterloo.ca/" target="_blank" rel="noreferrer">

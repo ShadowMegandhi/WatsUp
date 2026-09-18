@@ -13,7 +13,8 @@
   ],
   "host_permissions": [
     "https://learn.uwaterloo.ca/*",
-    "https://portal.uwaterloo.ca/*"
+    "https://portal.uwaterloo.ca/*",
+    "https://outline.uwaterloo.ca/*"
   ],
   "background": {
     "service_worker": "background.js",

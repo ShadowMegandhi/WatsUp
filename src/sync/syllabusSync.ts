@@ -12,12 +12,13 @@
 import { type Result, ok } from '@shared/result';
 import type { AppError } from '@shared/errors';
 import { flattenToc, pickSyllabusTopics } from '@core/syllabus/discover';
-import { extractCandidates } from '@core/syllabus/extract';
+import { extractCandidates, nearMisses } from '@core/syllabus/extract';
 import { termFrom } from '@core/syllabus/dates';
 import { candidatesToItems, dropDuplicatesOfLearn } from '@core/syllabus/toItems';
 import { LEARN_ORIGIN } from '@shared/constants';
 import type { Course, TaskItem } from '@core/types';
 import type { Fetcher } from './fetchProxy';
+import { fetchExternalText, isFollowable } from './fetchProxy';
 import { extractPdfLines } from '@platform/offscreenHost';
 
 export interface SyllabusOutcome {
@@ -63,6 +64,14 @@ export const syncSyllabus = async (
 
     read += 1;
     const candidates = extractCandidates(lines.value, term);
+
+    if (candidates.length === 0) {
+      const missed = nearMisses(lines.value, term);
+      if (missed.length > 0) {
+        problems.push(`${topic.title} came close on: ${missed.join(SEP)}`);
+      }
+    }
+
     collected.push(
       ...candidatesToItems(
         candidates,
@@ -113,7 +122,25 @@ const readDocument = async (
   if (PDF.test(url) || PDF.test(title)) return await readPdf(url);
 
   if (typeIdentifier === 'Link') {
-    return { value: [], error: "Syllabus is a link to another site" };
+    if (!isFollowable(url)) {
+      return { value: [], error: "Syllabus links to a site outside Waterloo" };
+    }
+
+    const external = await fetchExternalText(url);
+    if (!external.ok) {
+      return {
+        value: [],
+        error: external.error.kind === 'auth-redirect'
+          ? "Sign in to outline.uwaterloo.ca once, then refresh"
+          : "Could not open the linked outline",
+      };
+    }
+
+    if (external.value.slice(0, 1024).includes("%PDF")) return await readPdf(url);
+
+    const linked = toLines(external.value);
+    if (linked.length === 0) return { value: [], error: "Linked outline had no readable text" };
+    return { value: linked, error: null };
   }
 
   const text = await fetchText(fetcher, url);

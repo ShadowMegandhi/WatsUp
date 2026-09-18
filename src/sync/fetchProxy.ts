@@ -160,3 +160,51 @@ export const workerFetcher = (): Fetcher => ({
     }
   },
 });
+
+/**
+ * Hosts a syllabus link may legitimately point at.
+ *
+ * UW keeps course outlines in a central system rather than in LEARN, so a
+ * course that looks like it has no syllabus often has one link away. Following
+ * that link needs its own host permission, and the list is kept explicit so
+ * the reach of this feature is obvious rather than implied.
+ */
+const FOLLOWABLE_HOSTS: readonly string[] = ['outline.uwaterloo.ca', 'learn.uwaterloo.ca'];
+
+export const isFollowable = (url: string): boolean => {
+  try {
+    return FOLLOWABLE_HOSTS.includes(new URL(url).host);
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Fetches a document from another uwaterloo host.
+ *
+ * This cannot go through the content-script relay: that runs on a LEARN page
+ * and a cross-origin request from it would be refused. The service worker can
+ * do it directly because the extension holds a host permission, which is the
+ * one thing that makes the request same-site.
+ */
+export const fetchExternalText = async (url: string): Promise<Result<string, AppError>> => {
+  if (!isFollowable(url)) {
+    return err({ kind: 'http', status: 0, url, message: 'Not a followable host' });
+  }
+
+  try {
+    const response = await fetch(url, { credentials: 'include', redirect: 'follow' });
+    const body = await response.text();
+
+    // The outline system sits behind the same sign-in as everything else, so
+    // an expired session lands on a login page rather than erroring.
+    if (/duosecurity|<title>[^<]*sign in|oidc\/login/i.test(body.slice(0, 2000))) {
+      return err(authRedirect(response.url));
+    }
+    if (!response.ok) return err(httpError(response.status, url));
+
+    return ok(body);
+  } catch (cause) {
+    return err(networkError(url, cause));
+  }
+};

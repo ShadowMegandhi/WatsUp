@@ -183,3 +183,60 @@ const dedupe = (items: readonly Candidate[]): readonly Candidate[] => {
 
   return [...best.values()].sort((a, b) => a.dueAt - b.dueAt);
 };
+
+/**
+ * Lines that came close but were refused.
+ *
+ * When a syllabus reads cleanly and yields nothing, there are two very
+ * different explanations: it genuinely lists no dated assessments, or the
+ * rules here are too narrow for how this instructor writes. Those look
+ * identical from outside, and guessing between them is how a heuristic system
+ * stays broken.
+ *
+ * Reporting the near misses, with the reason each was refused, turns that
+ * guess into a reading.
+ */
+export const nearMisses = (
+  lines: readonly string[],
+  term: TermContext,
+  limit = 6,
+): readonly string[] => {
+  const out: string[] = [];
+
+  for (const raw of lines) {
+    if (out.length >= limit) break;
+
+    const line = raw.replace(/\s+/g, ' ').trim();
+    if (line.length < 6 || line.length > 220) continue;
+
+    const lower = line.toLowerCase();
+    const named = ASSESSMENT_TERMS.some((t) => lower.includes(t));
+    if (!named) continue;
+
+    const vetoed = VETO_TERMS.find((t) => lower.includes(t));
+    if (vetoed !== undefined) {
+      out.push(`[ignored: mentions "${vetoed}"] ${line}`);
+      continue;
+    }
+
+    const ungraded = UNGRADED_TERMS.find((t) => lower.includes(t));
+    if (ungraded !== undefined) {
+      out.push(`[ignored: looks ungraded, "${ungraded}"] ${line}`);
+      continue;
+    }
+
+    const found = findDate(line, term);
+    if (found === null) {
+      out.push(`[no date found] ${line}`);
+      continue;
+    }
+    if (!withinTerm(found.date, term)) {
+      out.push(`[date outside term] ${line}`);
+      continue;
+    }
+
+    out.push(`[below confidence] ${line}`);
+  }
+
+  return out;
+};
