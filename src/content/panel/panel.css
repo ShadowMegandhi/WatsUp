@@ -448,3 +448,12 @@
 .toolbtn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .toolbtn.ghost { background: transparent; color: var(--soft); border: 1px solid var(--rule); }
 .toolbtn.ghost:hover { color: var(--ink); border-color: #ccd1dd; }
+
+.banner.schedule {
+  background: linear-gradient(180deg, rgba(47, 95, 208, 0.1), rgba(47, 95, 208, 0.03));
+  border-bottom-color: rgba(47, 95, 208, 0.25);
+  color: var(--ink);
+}
+.banner.schedule strong { display: block; margin-bottom: 3px; color: var(--focus); }
+.banner.schedule div { color: var(--soft); font-size: 12px; }
+.banner.schedule .portalbtn { margin-top: 8px; }

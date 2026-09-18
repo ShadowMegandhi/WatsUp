@@ -67,12 +67,27 @@ export const scoreTopic = (topic: TocTopic, now: number): number => {
 export const pickSyllabusTopics = (
   topics: readonly TocTopic[],
   now: number,
-): readonly ScoredTopic[] =>
-  topics
+): readonly ScoredTopic[] => {
+  const scored = topics
     .map((topic) => ({ ...topic, score: scoreTopic(topic, now) }))
     .filter((t) => t.score >= SYLLABUS_THRESHOLD)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, MAX_DOCS_PER_COURSE);
+    .sort((a, b) => b.score - a.score);
+
+  // A course often lists the same outline in more than one module, and
+  // fetching it twice costs a PDF download and a parse to learn nothing.
+  const seen = new Set<string>();
+  const unique: ScoredTopic[] = [];
+
+  for (const topic of scored) {
+    const key = `${topic.url}|${topic.title.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(topic);
+    if (unique.length >= MAX_DOCS_PER_COURSE) break;
+  }
+
+  return unique;
+};
 
 /**
  * Flattens the nested content tree that LEARN returns.

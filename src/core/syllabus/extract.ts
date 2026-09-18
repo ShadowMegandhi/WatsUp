@@ -203,11 +203,17 @@ export const nearMisses = (
 ): readonly string[] => {
   const out: string[] = [];
 
+  // Anything that was accepted is not a near miss, and listing it invites
+  // the reader to debug something that already works.
+  const accepted = new Set(extractCandidates(lines, term).map((c) => c.sourceLine));
+
   for (const raw of lines) {
     if (out.length >= limit) break;
 
     const line = raw.replace(/\s+/g, ' ').trim();
     if (line.length < 6 || line.length > 220) continue;
+
+    if (accepted.has(line)) continue;
 
     const lower = line.toLowerCase();
     const named = ASSESSMENT_TERMS.some((t) => lower.includes(t));

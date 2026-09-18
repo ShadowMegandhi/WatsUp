@@ -154,6 +154,17 @@ export const Panel = () => {
   const tally = useMemo(() => counts(resolved, now), [resolved, now]);
   const attention = useMemo(() => attentionCount(resolved, now), [resolved, now]);
 
+  // Read from the notes the syllabus pass already writes, so the count is
+  // whatever the reader actually found rather than a second guess at it.
+  const waitingOnSchedule = useMemo(
+    () =>
+      health.reduce((total, h) => {
+        const m = /(d{1,2}) of them, but no/.exec(h.syllabusNote ?? "");
+        return total + (m === null ? 0 : Number(m[1]));
+      }, 0),
+    [health],
+  );
+
   const sync = useCallback(async () => {
     setBusy(true);
     try {
@@ -206,6 +217,19 @@ export const Panel = () => {
         onMinimize={() => void setPref({ minimized: true })}
         onHide={() => void setPref({ hidden: true })}
       />
+
+      {(portal?.meetings ?? 0) === 0 && waitingOnSchedule > 0 && (
+        <div class="banner schedule">
+          <strong>{waitingOnSchedule} assignments are waiting on your timetable.</strong>
+          <div>
+            Your outline says how many there are but not when. Open Quest and view your class
+            schedule once, and they will be placed on your real tutorial and lab dates.
+          </div>
+          <a class="portalbtn" href="https://quest.pecs.uwaterloo.ca/" target="_blank" rel="noreferrer">
+            Open Quest
+          </a>
+        </div>
+      )}
 
       {syncState?.authState === 'needs-signin' && (
         <div class="banner">
