@@ -27,6 +27,13 @@ import {
 } from '@storage/store';
 import { LEARN_ORIGIN } from '@shared/constants';
 import { formatSyncedAt } from '../../content/panel/format';
+import {
+  OUTLINE_ORIGINS,
+  SCHEDULE_ORIGINS,
+  hasOrigins,
+  registerScheduleScript,
+  requestOrigins,
+} from '@platform/permissions';
 
 const QUEST = 'https://quest.pecs.uwaterloo.ca/';
 const OUTLINE = 'https://outline.uwaterloo.ca/';
@@ -39,6 +46,8 @@ const App = () => {
   const [health, setHealth] = useState<readonly CourseHealth[]>([]);
   const [busy, setBusy] = useState(false);
   const [openHelp, setOpenHelp] = useState<string | null>(null);
+  const [allowedSchedule, setAllowedSchedule] = useState(true);
+  const [allowedOutline, setAllowedOutline] = useState(true);
 
   const load = useCallback(async () => {
     const [items, courses, overrides, s, p, cap, h] = await Promise.all([
@@ -64,6 +73,11 @@ const App = () => {
     setPrefs(p);
     setPortal(cap);
     setHealth(h);
+
+    // A withheld host fails silently in two ways at once, so it is checked
+    // rather than assumed.
+    setAllowedSchedule(await hasOrigins(SCHEDULE_ORIGINS));
+    setAllowedOutline(await hasOrigins(OUTLINE_ORIGINS));
   }, []);
 
   useEffect(() => {
@@ -87,6 +101,21 @@ const App = () => {
 
   const open = useCallback((url: string) => {
     void chrome.tabs.create({ url });
+  }, []);
+
+  const connectSchedule = useCallback(async () => {
+    const granted = await requestOrigins(SCHEDULE_ORIGINS);
+    if (!granted) return;
+    await registerScheduleScript();
+    setAllowedSchedule(true);
+    void chrome.tabs.create({ url: QUEST });
+  }, []);
+
+  const connectOutline = useCallback(async () => {
+    const granted = await requestOrigins(OUTLINE_ORIGINS);
+    if (!granted) return;
+    setAllowedOutline(true);
+    void chrome.tabs.create({ url: OUTLINE });
   }, []);
 
   const showPanel = useCallback(async () => {
@@ -120,17 +149,27 @@ const App = () => {
         )}
 
         <Step
-          done={sessions > 0}
-          title={sessions > 0 ? `Quest connected, ${sessions} sessions` : 'Connect Quest'}
-          detail={
-            sessions > 0
-              ? 'Lab and tutorial dates are known.'
-              : waiting > 0
-                ? `${waiting} assignments are waiting on your timetable.`
-                : 'Needed before labs and tutorials can be dated.'
+          done={sessions > 0 && allowedSchedule}
+          title={
+            !allowedSchedule
+              ? 'Allow access to Quest'
+              : sessions > 0
+                ? `Quest connected, ${sessions} sessions`
+                : 'Connect Quest'
           }
-          action={sessions > 0 ? null : 'Open Quest'}
-          onAction={() => open(QUEST)}
+          detail={
+            !allowedSchedule
+              ? 'Chrome is holding this back. One click grants it.'
+              : sessions > 0
+                ? 'Lab and tutorial dates are known.'
+                : waiting > 0
+                  ? `${waiting} assignments are waiting on your timetable.`
+                  : 'Needed before labs and tutorials can be dated.'
+          }
+          action={
+            !allowedSchedule ? 'Allow and open Quest' : sessions > 0 ? null : 'Open Quest'
+          }
+          onAction={() => void (allowedSchedule ? open(QUEST) : connectSchedule())}
           help={openHelp === 'quest'}
           onHelp={() => setOpenHelp(openHelp === 'quest' ? null : 'quest')}
           helpText={[
@@ -142,15 +181,17 @@ const App = () => {
         />
 
         <Step
-          done={!outlineTrouble}
+          done={!outlineTrouble && allowedOutline}
           title={outlineTrouble ? 'Sign in to course outlines' : 'Course outlines readable'}
           detail={
             outlineTrouble
               ? 'Some courses keep their outline outside LEARN and the sign-in has lapsed.'
               : 'Outlines are being read wherever courses publish them.'
           }
-          action={outlineTrouble ? 'Open outlines' : null}
-          onAction={() => open(OUTLINE)}
+          action={
+            !allowedOutline ? 'Allow course outlines' : outlineTrouble ? 'Open outlines' : null
+          }
+          onAction={() => void (allowedOutline ? open(OUTLINE) : connectOutline())}
           help={openHelp === 'outline'}
           onHelp={() => setOpenHelp(openHelp === 'outline' ? null : 'outline')}
           helpText={[

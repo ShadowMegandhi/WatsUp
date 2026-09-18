@@ -9,13 +9,11 @@
     "alarms",
     "notifications",
     "offscreen",
-    "idle"
+    "idle",
+    "scripting"
   ],
   "host_permissions": [
-    "https://learn.uwaterloo.ca/*",
-    "https://portal.uwaterloo.ca/*",
-    "https://outline.uwaterloo.ca/*",
-    "https://quest.pecs.uwaterloo.ca/*"
+    "https://learn.uwaterloo.ca/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -31,17 +29,6 @@
       ],
       "run_at": "document_idle",
       "all_frames": false
-    },
-    {
-      "matches": [
-        "https://portal.uwaterloo.ca/*",
-        "https://quest.pecs.uwaterloo.ca/*"
-      ],
-      "js": [
-        "portal.js"
-      ],
-      "run_at": "document_idle",
-      "all_frames": true
     }
   ],
   "action": {
@@ -70,5 +57,10 @@
         "https://learn.uwaterloo.ca/*"
       ]
     }
+  ],
+  "optional_host_permissions": [
+    "https://quest.pecs.uwaterloo.ca/*",
+    "https://portal.uwaterloo.ca/*",
+    "https://outline.uwaterloo.ca/*"
   ]
 }

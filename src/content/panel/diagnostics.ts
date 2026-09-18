@@ -21,18 +21,26 @@ export interface DiagnosticsInput {
   readonly health: readonly CourseHealth[];
   readonly syncState: SyncState | null;
   readonly portal: StoredPortalCapture | null;
+  readonly grantedHosts: readonly string[];
   readonly now: number;
 }
 
 const SAMPLE_CHARS = 1500;
 
 export const buildDiagnostics = (input: DiagnosticsInput): string => {
-  const { items, courses, health, syncState, portal, now } = input;
+  const { items, courses, health, syncState, portal, grantedHosts, now } = input;
   const healthById = new Map(health.map((h) => [h.courseId, h]));
   const out: string[] = [];
 
   out.push('LEARN Tracker diagnostics');
   out.push(new Date(now).toISOString());
+  out.push('');
+
+  out.push('HOST ACCESS');
+  for (const host of REQUIRED_HOSTS) {
+    const granted = grantedHosts.some((g) => g.includes(host.match));
+    out.push(`  ${granted ? Y : N} ${host.label}`);
+  }
   out.push('');
 
   out.push('SYNC');
@@ -105,6 +113,21 @@ export const buildDiagnostics = (input: DiagnosticsInput): string => {
 
   return out.join('\n');
 };
+
+const Y = "granted  ";
+const N = "WITHHELD ";
+
+/**
+ * A withheld host fails silently in two ways at once: a worker fetch throws
+ * "Failed to fetch" and a declared content script never injects. Both read as
+ * the site being broken, which is why this is the first thing reported.
+ */
+const REQUIRED_HOSTS = [
+  { match: 'learn.uwaterloo.ca', label: 'LEARN, for assignments' },
+  { match: 'quest.pecs.uwaterloo.ca', label: 'Quest, for lab and tutorial dates' },
+  { match: 'portal.uwaterloo.ca', label: 'Portal, an alternative schedule source' },
+  { match: 'outline.uwaterloo.ca', label: 'Course outlines kept outside LEARN' },
+] as const;
 
 const countSource = (items: readonly TaskItem[], system: string): number =>
   items.filter((i) => i.sources.some((s) => s.system === system)).length;

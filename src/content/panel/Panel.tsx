@@ -42,6 +42,7 @@ import {
 import { LEARN_ORIGIN } from '@shared/constants';
 import { formatDue, formatSyncedAt, urgency, KIND_LABEL } from './format';
 import { buildDiagnostics } from './diagnostics';
+import { grantedOrigins } from '@platform/permissions';
 
 type Tab = 'assigned' | 'overdue' | 'done' | 'calendar' | 'courses';
 
@@ -86,6 +87,7 @@ export const Panel = () => {
   const [health, setHealth] = useState<readonly CourseHealth[]>([]);
   const [portal, setPortal] = useState<{ meetings: number; term: string | null } | null>(null);
   const [rawPortal, setRawPortal] = useState<StoredPortalCapture | null>(null);
+  const [hosts, setHosts] = useState<readonly string[]>([]);
 
   const [tab, setTab] = useState<Tab>('assigned');
   const [query, setQuery] = useState('');
@@ -109,6 +111,7 @@ export const Panel = () => {
 
     const capture = await readPortalCapture();
     setRawPortal(capture);
+    setHosts(await grantedOrigins());
     setPortal(
       capture === null
         ? null
@@ -329,6 +332,7 @@ export const Panel = () => {
                 health,
                 syncState,
                 portal: rawPortal,
+                grantedHosts: hosts,
                 now: Date.now(),
               })
             }

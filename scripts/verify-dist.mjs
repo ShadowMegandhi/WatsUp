@@ -34,7 +34,9 @@ for (const size of Object.keys(manifest.action?.default_icon ?? {})) {
 // Permission budget. Anything beyond this list is a deliberate decision that
 // should be made consciously, because broad permissions are the single biggest
 // driver of Chrome Web Store review friction.
-const ALLOWED_PERMISSIONS = new Set(['storage', 'alarms', 'notifications', 'offscreen', 'idle']);
+const ALLOWED_PERMISSIONS = new Set([
+  'storage', 'alarms', 'notifications', 'offscreen', 'idle', 'scripting',
+]);
 // Portal is read only to learn when labs and tutorials meet, so a syllabus
 // saying 'Lab 1' can be turned into a date.
 const ALLOWED_HOSTS = new Set([
