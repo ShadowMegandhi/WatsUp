@@ -65,7 +65,7 @@ export const syncSyllabus = async (
     read += 1;
     const candidates = extractCandidates(lines.value, term);
 
-    if (candidates.length === 0) {
+    if (candidates.length < NEAR_MISS_UNTIL) {
       const missed = nearMisses(lines.value, term);
       if (missed.length > 0) {
         problems.push(`${topic.title} came close on: ${missed.join(SEP)}`);
@@ -163,21 +163,37 @@ const fetchText = async (fetcher: Fetcher, url: string): Promise<string | null> 
   const res = await fetcher.getText(path);
   return res.ok ? res.value : null;
 };
-
 /**
  * Splits document text into candidate lines.
  *
- * Table rows in HTML collapse onto one line, which suits the extractor: it
- * wants a date and an assessment name in the same string, and a table row is
- * exactly that.
+ * Script and style blocks are removed whole, not just their tags. Stripping
+ * tags alone leaves the code inside them behind, and a page script full of
+ * regular expressions and braces then reaches the assessment reader looking
+ * like prose. That is noise at best and a false positive at worst.
+ *
+ * Table rows are collapsed onto one line, which suits the reader: it wants a
+ * date and an assessment name in the same string, and a table row is exactly
+ * that.
  */
 export const toLines = (text: string): readonly string[] =>
   text
-    .replace(/<\s*(br|\/tr|\/p|\/div|\/li|\/h[1-6])\s*>/gi, '\n')
-    .replace(/<\s*\/?\s*t[dh][^>]*>/gi, ' | ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .split('\n')
-    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .replace(SCRIPT_BLOCK, " ")
+    .replace(STYLE_BLOCK, " ")
+    .replace(COMMENT_BLOCK, " ")
+    .replace(BLOCK_END, "\n")
+    .replace(CELL_EDGE, " | ")
+    .replace(ANY_TAG, " ")
+    .replace(NBSP, " ")
+    .replace(AMP, "&")
+    .split("\n")
+    .map((l) => l.replace(WHITESPACE, " ").trim())
     .filter((l) => l.length > 0);
+const SCRIPT_BLOCK = /<script[\s\S]*?<\/script>/gi;
+const STYLE_BLOCK = /<style[\s\S]*?<\/style>/gi;
+const COMMENT_BLOCK = /<!--[\s\S]*?-->/g;
+const BLOCK_END = /<\s*(br|\/tr|\/p|\/div|\/li|\/h[1-6])\s*>/gi;
+const CELL_EDGE = /<\s*\/?\s*t[dh][^>]*>/gi;
+const ANY_TAG = /<[^>]+>/g;
+const NBSP = /&nbsp;/gi;
+const AMP = /&amp;/gi;
+const WHITESPACE = /\s+/g;

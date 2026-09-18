@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { findDate, inferYear, termFrom, withinTerm, maskNonDates } from '@core/syllabus/dates';
 import { extractCandidates, readLine, readWeight, buildTitle } from '@core/syllabus/extract';
+import { toLines } from '@sync/syllabusSync';
 
 /** Fall 2026: starts September, runs into December. */
 const FALL = termFrom(new Date(2026, 8, 8).getTime(), Date.now());
@@ -231,5 +232,34 @@ describe('extractCandidates on a realistic outline', () => {
       FALL,
     );
     expect(found).toHaveLength(1);
+  });
+});
+
+describe('toLines', () => {
+  it('removes script contents, not just the tags', () => {
+    // Page code reaching the assessment reader looks like prose full of braces
+    // and regular expressions, which is noise at best and a false match at worst.
+    const html = '<p>Midterm Oct 23</p><script>if (/test/.test(x)) { quiz(); }</script>';
+    const lines = toLines(html);
+    expect(lines.join(' ')).not.toContain('querySelector');
+    expect(lines.join(' ')).not.toContain('quiz()');
+    expect(lines.join(' ')).toContain('Midterm Oct 23');
+  });
+
+  it('removes style blocks', () => {
+    const lines = toLines('<style>.exam { color: red }</style><p>Lab 1 Sept 15</p>');
+    expect(lines.join(' ')).not.toContain('color');
+  });
+
+  it('removes comments', () => {
+    const lines = toLines('<!-- Quiz 9 Dec 1 --><p>Quiz 1 Oct 2</p>');
+    expect(lines.join(' ')).not.toContain('Dec 1');
+  });
+
+  it('keeps a table row on one line so a date and a name stay together', () => {
+    const row = '<tr><td>Oct 28</td><td>Tutorial Test 3</td></tr>';
+    const lines = toLines(row);
+    expect(lines[0]).toContain('Oct 28');
+    expect(lines[0]).toContain('Tutorial Test 3');
   });
 });
