@@ -43,6 +43,8 @@ const ALLOWED_HOSTS = new Set([
   // UW keeps course outlines centrally, not in LEARN, so a syllabus link often
   // points here and cannot be read without it.
   'https://outline.uwaterloo.ca/*',
+  // Quest is where enrolled sections and their meeting times actually live.
+  'https://quest.pecs.uwaterloo.ca/*',
 ]);
 
 for (const p of manifest.permissions ?? []) {

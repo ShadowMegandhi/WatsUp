@@ -1,38 +1,47 @@
 /**
- * Content script for Portal.
+ * Content script for Portal and Quest.
  *
- * Portal is a client-rendered app, so the schedule is not present when the
- * script first runs. Rather than poll blindly, it watches for the page to
- * settle and re-reads whenever the content changes, capturing the best result
- * it has seen. Navigating within the app counts as a change.
+ * Runs on every page of both sites rather than on one known schedule URL,
+ * because a student should not have to find the right page for this to work.
+ * Whatever page happens to show a timetable is the page it reads.
+ *
+ * Both apps render client side, so the schedule is not present when the
+ * script first runs. It watches for the page to settle and re-reads on
+ * change, keeping the best result it has seen. Navigating within either app
+ * counts as a change.
  */
 
 import { captureFromDocument } from './capture';
-import { writePortalCapture } from '@storage/store';
+import { readPortalCapture, writePortalCapture } from '@storage/store';
 
 const SETTLE_MS = 900;
-const GIVE_UP_MS = 30_000;
+const GIVE_UP_MS = 45_000;
 
-let best = 0;
+let bestThisPage = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
 const startedAt = Date.now();
 
-const attempt = (): void => {
+const attempt = async (): Promise<void> => {
   const capture = captureFromDocument(document, Date.now());
   const found = capture.schedule.meetings.length;
+  if (found <= bestThisPage && found === 0) return;
 
-  // Keep whichever read saw the most, since a partially rendered page can
-  // legitimately show fewer rows than the finished one.
-  if (found > best || (best === 0 && capture.sawText)) {
-    best = found;
-    void writePortalCapture(capture);
+  const previous = await readPortalCapture();
+  const previousCount = previous?.schedule.meetings.length ?? 0;
+
+  // Only replace a capture with one that saw more. A half-rendered page, or
+  // an unrelated page on the same site, must not wipe out a good read from
+  // the schedule view.
+  if (found > previousCount || (previousCount === 0 && capture.sawText)) {
+    bestThisPage = found;
+    await writePortalCapture(capture);
   }
 };
 
 const schedule = (): void => {
   if (timer !== null) clearTimeout(timer);
   if (Date.now() - startedAt > GIVE_UP_MS) return;
-  timer = setTimeout(attempt, SETTLE_MS);
+  timer = setTimeout(() => void attempt(), SETTLE_MS);
 };
 
 schedule();
@@ -41,5 +50,5 @@ const observer = new MutationObserver(schedule);
 observer.observe(document.documentElement, { childList: true, subtree: true });
 
 // Stop watching once the page has been stable for a while. A permanent
-// observer on someone elses app is rude and costs battery for nothing.
+// observer on someone elses app costs battery for nothing.
 setTimeout(() => observer.disconnect(), GIVE_UP_MS);

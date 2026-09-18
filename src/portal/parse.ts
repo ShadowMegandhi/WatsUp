@@ -90,35 +90,37 @@ export const parseScheduleText = (text: string): readonly SectionMeeting[] => {
   let currentCourse: string | null = null;
 
   for (const line of lines) {
+    const kind = parseKind(line);
+
     const code = /\b([A-Z]{2,6})\s?(\d{3}[A-Z]?)\b/.exec(line);
     const prefix = (code?.[1] ?? "").toUpperCase();
     // A component label looks exactly like a course code: letters then three
     // digits. Without this guard "TUT 102" becomes the current course and
     // every row beneath it is filed under a course that does not exist.
     const isComponentLabel = /^(LEC|LAB|TUT|TST|SEM|PRJ)$/.test(prefix);
-    if (code !== null && !isComponentLabel) currentCourse = `${code[1]} ${code[2]}`;
+    // A meeting row never introduces a course; only a heading does.
+    if (code !== null && !isComponentLabel && kind === null) {
+      currentCourse = `${code[1]} ${code[2]}`;
+    }
 
-    const kind = parseKind(line);
     if (kind === null || currentCourse === null) continue;
 
     const days = findDays(line);
     if (days.length === 0) continue;
 
     const times = line.match(/\d{1,2}[:.]\d{2}\s*[ap]?\.?m?\.?/gi) ?? [];
-    const section = /\b(?:LEC|LAB|TUT|TST|SEM|PRJ)\s*[-#]?\s*(\d{2,3})\b/i.exec(line);
 
     out.push({
       courseCode: currentCourse,
       kind,
-      section: section === null ? kind : `${kind} ${section[1]}`,
+      section: findSection(line, kind),
       pattern: {
         days,
         startMinute: times[0] === undefined ? null : parseClock(times[0]),
         endMinute: times[1] === undefined ? null : parseClock(times[1]),
         location: findLocation(line),
       },
-      startsOn: null,
-      endsOn: null,
+      ...findDateRange(line),
     });
   }
 
@@ -159,3 +161,70 @@ const dedupe = (meetings: readonly SectionMeeting[]): readonly SectionMeeting[] 
  * rather than as Tuesday followed by a stray letter.
  */
 const DAY_TOKEN_RE = /(?:^|[\s|,])((?:Th|Tu|We|Su|Sa|Mo|Fr|M|T|W|F|S)+)(?=[\s|,]|$)/;
+
+/**
+ * Quest lays a schedule out as a table with one column per field, so the
+ * section number arrives before the component rather than attached to it, and
+ * each row carries the dates the section actually runs between.
+ *
+ * Both orders are accepted because Portal and Quest disagree, and a student
+ * should not have to know which system they are looking at.
+ */
+export const findSection = (line: string, kind: ComponentKind): string => {
+  const upper = line.toUpperCase();
+  const at = upper.indexOf(kind);
+  if (at < 0) return kind;
+
+  // Portal writes the number after the component, Quest puts it in the
+  // column before. Both are accepted, because a student should not have to
+  // know which system they happen to be looking at.
+  const after = readDigits(upper.slice(at + kind.length), true);
+  if (after !== null) return kind + " " + after;
+
+  const before = readDigits(reverse(upper.slice(0, at)), true);
+  if (before !== null) return kind + " " + reverse(before);
+
+  return kind;
+};
+
+/** Digits at the head of a string, allowing a little separator first. */
+const readDigits = (text: string, skipSeparators: boolean): string | null => {
+  let i = 0;
+  if (skipSeparators) {
+    while (i < text.length && i < 4 && SEPARATORS.includes(text[i] ?? "")) i += 1;
+  }
+
+  let digits = "";
+  while (i < text.length && digits.length < 4 && isDigit(text[i])) {
+    digits += text[i];
+    i += 1;
+  }
+
+  return digits.length >= 2 ? digits : null;
+};
+
+const SEPARATORS = [" ", "-", "#", ":", "	"];
+const isDigit = (c: string | undefined): boolean => c !== undefined && c >= "0" && c <= "9";
+const reverse = (s: string): string => s.split("").reverse().join("");
+
+/**
+ * A run of dates like 09/08/2026 - 12/02/2026, which Quest prints per section.
+ *
+ * Read as month first, which is what Quest emits. The ambiguity that makes
+ * numeric dates unsafe in a syllabus does not apply here: this is one system
+ * with one known format, not arbitrary prose.
+ */
+export const findDateRange = (line: string): { startsOn: number | null; endsOn: number | null } => {
+  const m = /\b(\d{1,2})\/(\d{1,2})\/(\d{4})\s*[-\u2013]\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\b/.exec(line);
+  if (m === null) return { startsOn: null, endsOn: null };
+
+  const at = (mo: string | undefined, d: string | undefined, y: string | undefined): number | null => {
+    const month = Number(mo);
+    const day = Number(d);
+    const year = Number(y);
+    if (!Number.isFinite(month) || !Number.isFinite(day) || !Number.isFinite(year)) return null;
+    return new Date(year, month - 1, day).getTime();
+  };
+
+  return { startsOn: at(m[1], m[2], m[3]), endsOn: at(m[4], m[5], m[6]) };
+};

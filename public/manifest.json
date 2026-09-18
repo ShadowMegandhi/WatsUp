@@ -14,7 +14,8 @@
   "host_permissions": [
     "https://learn.uwaterloo.ca/*",
     "https://portal.uwaterloo.ca/*",
-    "https://outline.uwaterloo.ca/*"
+    "https://outline.uwaterloo.ca/*",
+    "https://quest.pecs.uwaterloo.ca/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -33,13 +34,14 @@
     },
     {
       "matches": [
-        "https://portal.uwaterloo.ca/*"
+        "https://portal.uwaterloo.ca/*",
+        "https://quest.pecs.uwaterloo.ca/*"
       ],
       "js": [
         "portal.js"
       ],
       "run_at": "document_idle",
-      "all_frames": false
+      "all_frames": true
     }
   ],
   "action": {

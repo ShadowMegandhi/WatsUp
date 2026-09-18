@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDays, parseClock, parseKind, parseScheduleText } from '../src/portal/parse';
+import { parseDays, parseClock, parseKind, parseScheduleText, findDateRange } from '../src/portal/parse';
 import { nthOccurrence, findMeeting, type SectionMeeting, type TermSchedule } from '@core/schedule/types';
 
 describe('parseDays', () => {
@@ -159,5 +159,58 @@ describe('findMeeting', () => {
 
   it('returns null for a component the student does not have', () => {
     expect(findMeeting(schedule, 'MATH 135', 'LAB')).toBeNull();
+  });
+});
+
+describe('Quest table layout', () => {
+  // Quest prints one column per field, so the section number lands before the
+  // component rather than attached to it, and each row carries its run of dates.
+  const quest = [
+    'MATH 102 - Calculus 1',
+    'Status Enrolled Units 0.50 Grading Numeric Grading Basis',
+    'Class Nbr Section Component Days & Times Room Instructor Start/End Date',
+    '4021 001 LEC MWF 8:30AM - 9:20AM RCH 300 A Smith 09/08/2026 - 12/02/2026',
+    '4022 102 TUT Th 11:30AM - 12:20PM MC 4000 Staff 09/08/2026 - 12/02/2026',
+  ].join('\n');
+
+  it('reads the section number from the column before the component', () => {
+    const tut = parseScheduleText(quest).find((m) => m.kind === 'TUT');
+    expect(tut?.section).toBe('TUT 102');
+  });
+
+  it('attaches both components to the right course', () => {
+    const all = parseScheduleText(quest);
+    expect(all).toHaveLength(2);
+    expect(all.every((m) => m.courseCode === 'MATH 102')).toBe(true);
+  });
+
+  it('reads the day and time of a single-day tutorial', () => {
+    const tut = parseScheduleText(quest).find((m) => m.kind === 'TUT');
+    expect(tut?.pattern.days).toEqual([4]);
+    expect(tut?.pattern.startMinute).toBe(11 * 60 + 30);
+  });
+
+  it('reads the run of dates the section meets between', () => {
+    const tut = parseScheduleText(quest).find((m) => m.kind === 'TUT');
+    expect(tut?.startsOn).not.toBeNull();
+    expect(new Date(tut?.startsOn ?? 0).getMonth()).toBe(8);
+    expect(new Date(tut?.startsOn ?? 0).getDate()).toBe(8);
+  });
+
+  it('does not mistake the header row for a meeting', () => {
+    const headerOnly = 'Class Nbr Section Component Days & Times Room Instructor';
+    expect(parseScheduleText(headerOnly)).toEqual([]);
+  });
+});
+
+describe('findDateRange', () => {
+  it('reads month first, which is what Quest emits', () => {
+    const r = findDateRange('09/08/2026 - 12/02/2026');
+    expect(new Date(r.startsOn ?? 0).getMonth()).toBe(8);
+    expect(new Date(r.endsOn ?? 0).getMonth()).toBe(11);
+  });
+
+  it('returns nulls when there is no range', () => {
+    expect(findDateRange('TUT 102 Th 2:30PM')).toEqual({ startsOn: null, endsOn: null });
   });
 });
