@@ -179,3 +179,41 @@ export const readSeenIds = (): Promise<readonly string[]> => get<readonly string
 export const writeSeenIds = (ids: readonly string[]): Promise<boolean> => set({ [K.seen]: ids });
 
 export const STORAGE_KEYS = K;
+
+// --- syllabus cache --------------------------------------------------------
+
+/**
+ * What the syllabus pass last produced for a course.
+ *
+ * Reading a syllabus means downloading a PDF and running pdf.js over it. Doing
+ * that every half hour for a document that changes about twice a term is waste
+ * that a student pays for in battery and that LEARN pays for in requests.
+ *
+ * `parserVersion` is what makes a shipped heuristics fix actually take effect
+ * on an install that already has a cached result. Forgetting it is why such a
+ * fix can appear to do nothing.
+ */
+export interface SyllabusCache {
+  readonly courseId: string;
+  readonly parsedAt: number;
+  readonly parserVersion: number;
+  readonly items: readonly TaskItem[];
+  readonly note: string | null;
+  readonly docsFound: number;
+  readonly docsRead: number;
+}
+
+export const readSyllabusCache = (courseId: string): Promise<SyllabusCache | null> =>
+  get<SyllabusCache | null>(`syllabus:${courseId}`, null);
+
+export const writeSyllabusCache = (cache: SyllabusCache): Promise<boolean> =>
+  set({ [`syllabus:${cache.courseId}`]: cache });
+
+/** A syllabus is re-read once a day, or whenever the rules for reading it change. */
+export const syllabusCacheIsFresh = (
+  cache: SyllabusCache | null,
+  now: number,
+  parserVersion: number,
+  ttlMs: number,
+): boolean =>
+  cache !== null && cache.parserVersion === parserVersion && now - cache.parsedAt < ttlMs;

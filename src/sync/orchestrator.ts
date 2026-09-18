@@ -15,6 +15,8 @@ import { type AppError, isFatal, userMessage } from '@shared/errors';
 import { discoverVersions, fallbackVersions } from '@d2l/versions';
 import { parseCourses } from './probe';
 import { syncCourse } from './courseSync';
+import { dedupeById } from '@core/dedupe';
+import { LEXICON_VERSION } from '@core/syllabus/lexicon';
 import { syncSyllabus } from './syllabusSync';
 import { LEARN_ORIGIN } from '@shared/constants';
 import type { Course } from '@core/types';
@@ -29,6 +31,9 @@ import {
   writeApiVersions,
   readSeenIds,
   writeSeenIds,
+  readSyllabusCache,
+  writeSyllabusCache,
+  syllabusCacheIsFresh,
   readAllItems,
 } from '@storage/store';
 
@@ -39,6 +44,9 @@ export interface SyncSummary {
   readonly newItemIds: readonly string[];
   readonly partial: boolean;
 }
+
+/** How long a parsed syllabus is trusted before being read again. */
+const SYLLABUS_TTL_MS = 24 * 60 * 60 * 1000;
 
 export const runSync = async (
   fetcher: Fetcher,
@@ -69,7 +77,8 @@ export const runSync = async (
     let failed = 0;
 
     for (const course of courses) {
-      const result = await syncCourse(fetcher, course, versions.le, now);
+      const known = await readItemsFor(course.id);
+      const result = await syncCourse(fetcher, course, versions.le, now, known);
 
       if (!result.ok) {
         // Only a genuinely global problem stops the whole run.
@@ -92,10 +101,39 @@ export const runSync = async (
       // that LEARN already reported is discarded, because LEARN is live data
       // and a syllabus is a week-one document that goes stale the first time
       // a schedule changes.
-      const syllabus = await syncSyllabus(fetcher, course, versions.le, items, now);
-      const extra = syllabus.ok ? syllabus.value.items : [];
+      // A syllabus changes about twice a term, so re-downloading and
+      // re-parsing a PDF every half hour is pure waste. The cache is
+      // invalidated by age and by the parser version, so a shipped fix to
+      // the reading rules still takes effect on an existing install.
+      const cached = await readSyllabusCache(course.id);
+      const fresh = syllabusCacheIsFresh(cached, now, LEXICON_VERSION, SYLLABUS_TTL_MS);
 
-      const merged = preserveFirstSeen(await readItemsFor(course.id), [...items, ...extra]);
+      const syllabus = fresh
+        ? null
+        : await syncSyllabus(fetcher, course, versions.le, items, now);
+
+      if (syllabus !== null && syllabus.ok) {
+        await writeSyllabusCache({
+          courseId: course.id,
+          parsedAt: now,
+          parserVersion: LEXICON_VERSION,
+          items: syllabus.value.items,
+          note: syllabus.value.note,
+          docsFound: syllabus.value.docsFound,
+          docsRead: syllabus.value.docsRead,
+        });
+      }
+
+      const extra =
+        syllabus !== null && syllabus.ok ? syllabus.value.items : (cached?.items ?? []);
+      const syllabusNote =
+        syllabus !== null && syllabus.ok ? syllabus.value.note : (cached?.note ?? null);
+
+      // Two syllabus documents describing one midterm produce the same id
+      // twice, so identity dedup happens here rather than being left to
+      // whichever reader ran last.
+      const combined = dedupeById([...items, ...extra]);
+      const merged = preserveFirstSeen(known, combined);
       await writeItemsFor(course.id, merged);
 
       await writeHealth({
@@ -105,7 +143,7 @@ export const runSync = async (
         consecutiveFailures: 0,
         // Recorded so an empty syllabus result can explain itself rather
         // than looking identical to a course that simply had nothing.
-        syllabusNote: syllabus.ok ? syllabus.value.note : 'Syllabus could not be checked.',
+        syllabusNote,
         syllabusItems: extra.length,
       });
       synced += 1;

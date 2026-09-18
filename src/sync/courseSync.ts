@@ -29,6 +29,7 @@ export const syncCourse = async (
   course: Course,
   le: string,
   now: number,
+  known: readonly TaskItem[] = [],
 ): Promise<Result<CourseOutput, AppError>> => {
   const failures: string[] = [];
 
@@ -48,7 +49,7 @@ export const syncCourse = async (
     ? normalizeQuizzes(quizzes.value.json, course.id, LEARN_ORIGIN, now)
     : [];
 
-  const withEvidence = await applySubmissionEvidence(fetcher, course.id, le, assignmentItems);
+  const withEvidence = await applySubmissionEvidence(fetcher, course.id, le, assignmentItems, known, now);
 
   return ok({
     courseId: course.id,
@@ -73,11 +74,34 @@ const applySubmissionEvidence = async (
   courseId: string,
   le: string,
   items: readonly TaskItem[],
+  known: readonly TaskItem[],
+  now: number,
 ): Promise<readonly TaskItem[]> => {
+  const alreadyDone = new Set(known.filter((k) => k.learnCompleted).map((k) => k.id));
   const out: TaskItem[] = [];
+  const toCheck: TaskItem[] = [];
 
-  for (let i = 0; i < items.length; i += MAX_CONCURRENT_PER_COURSE) {
-    const batch = items.slice(i, i + MAX_CONCURRENT_PER_COURSE);
+  for (const item of items) {
+    // A submission does not un-happen, so re-asking about something already
+    // handed in is a request spent to learn nothing.
+    if (alreadyDone.has(item.id)) {
+      out.push({ ...item, learnCompleted: true, learnCompletionEvidence: 'submission' });
+      continue;
+    }
+
+    // Long-past work is not worth a call every half hour either. It stays
+    // visible and tickable by hand.
+    const due = item.dueAt ?? item.endsAt;
+    if (due !== null && now - due > STALE_AFTER_MS) {
+      out.push(item);
+      continue;
+    }
+
+    toCheck.push(item);
+  }
+
+  for (let i = 0; i < toCheck.length; i += MAX_CONCURRENT_PER_COURSE) {
+    const batch = toCheck.slice(i, i + MAX_CONCURRENT_PER_COURSE);
     const checked = await Promise.all(
       batch.map(async (item) => {
         const folderId = item.sources[0]?.sourceId;
@@ -95,3 +119,6 @@ const applySubmissionEvidence = async (
 
   return out;
 };
+
+/** Past this, a deadline is history and not worth re-checking each sync. */
+const STALE_AFTER_MS = 45 * 24 * 60 * 60 * 1000;
