@@ -187,21 +187,47 @@ export const isFollowable = (url: string): boolean => {
  * do it directly because the extension holds a host permission, which is the
  * one thing that makes the request same-site.
  */
+/**
+ * Fetches a document from another uwaterloo host.
+ *
+ * Redirects are deliberately not followed. A lapsed session on the outline
+ * system bounces to Duo, which is a host this extension has no permission
+ * for and will never ask for, so following the chain fails with a bare
+ * "Failed to fetch" that names neither the cause nor the cure. Stopping at
+ * the redirect turns the same situation into something actionable: the
+ * session has lapsed, sign in once.
+ *
+ * This also cannot go through the content-script relay, which runs on a
+ * LEARN page and would have its cross-origin request refused. The service
+ * worker can do it because the extension holds the host permission.
+ */
 export const fetchExternalText = async (url: string): Promise<Result<string, AppError>> => {
   if (!isFollowable(url)) {
     return err({ kind: 'http', status: 0, url, message: 'Not a followable host' });
   }
 
   try {
-    const response = await fetch(url, { credentials: 'include', redirect: 'follow' });
-    const body = await response.text();
+    const response = await fetch(url, { credentials: 'include', redirect: 'manual' });
 
-    // The outline system sits behind the same sign-in as everything else, so
-    // an expired session lands on a login page rather than erroring.
-    if (/duosecurity|<title>[^<]*sign in|oidc\/login/i.test(body.slice(0, 2000))) {
-      return err(authRedirect(response.url));
+    // An opaque redirect is what a manual-redirect fetch reports when the
+    // server tried to send us somewhere, which here means sign-in.
+    if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
+      return err(authRedirect(url));
     }
+
     if (!response.ok) return err(httpError(response.status, url));
+
+    const body = await response.text();
+    const head = body.slice(0, 2000).toLowerCase();
+    const looksLikeSignIn =
+      head.includes("duosecurity") ||
+      head.includes("oidc/login") ||
+      head.includes("<title>sign in") ||
+      head.includes("single sign");
+
+    if (looksLikeSignIn) {
+      return err(authRedirect(url));
+    }
 
     return ok(body);
   } catch (cause) {

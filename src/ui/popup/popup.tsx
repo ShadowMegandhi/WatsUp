@@ -84,6 +84,7 @@ const App = () => {
     setAllowedSchedule(await hasOrigins(SCHEDULE_ORIGINS));
     setAllowedOutline(await hasOrigins(OUTLINE_ORIGINS));
     setHosts(await hostStatuses());
+    await registerScheduleScript();
   }, []);
 
   useEffect(() => {
