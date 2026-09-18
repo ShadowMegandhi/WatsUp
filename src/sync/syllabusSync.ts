@@ -154,7 +154,9 @@ const readDocument = async (
         value: [],
         error: external.error.kind === 'auth-redirect'
           ? "Sign in to outline.uwaterloo.ca once, then refresh"
-          : "Could not open the linked outline",
+          : external.error.kind === "http"
+            ? `Linked outline returned ${external.error.status}`
+            : `Could not open the linked outline: ${external.error.message}`,
       };
     }
 
