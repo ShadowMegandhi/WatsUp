@@ -42,6 +42,10 @@ export const mountPanel = async (): Promise<void> => {
   await positionRoot(root);
   render(h(Panel, {}), root);
   enableDragging(root);
+
+  // Measure once painted: the first placement has nothing to measure, and
+  // a collapsed dock and an open panel differ by four hundred pixels.
+  requestAnimationFrame(() => void positionRoot(root));
 };
 
 /**
@@ -50,8 +54,9 @@ export const mountPanel = async (): Promise<void> => {
  */
 const positionRoot = async (root: HTMLElement): Promise<void> => {
   const prefs = await readPanelPrefs();
-  const width = 480;
-  const height = 280;
+  const rect = root.getBoundingClientRect();
+  const width = rect.width > 0 ? rect.width : 480;
+  const height = rect.height > 0 ? rect.height : 280;
 
   const maxX = Math.max(MARGIN, window.innerWidth - width - MARGIN);
   const maxY = Math.max(MARGIN, window.innerHeight - height - MARGIN);
@@ -102,7 +107,7 @@ const enableDragging = (root: HTMLElement): void => {
 
   root.addEventListener('pointerdown', (event) => {
     const target = event.target as HTMLElement | null;
-    const handle = target?.closest('[data-drag-handle], .pill');
+    const handle = target?.closest('[data-drag-handle], .dock');
     if (handle === null || handle === undefined) return;
 
     // Let the buttons inside the header do their own job.

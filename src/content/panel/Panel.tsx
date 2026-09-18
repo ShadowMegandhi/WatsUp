@@ -222,10 +222,37 @@ export const Panel = () => {
   if (prefs === null || prefs.hidden) return null;
 
   if (prefs.minimized) {
+    const overdue = tally.overdue;
+
     return (
-      <button type="button" class="pill" onClick={() => void setPref({ minimized: false })}>
-        <span class="mark">L</span>
-        <span>{attention > 0 ? `${attention} due soon` : 'LEARN Tracker'}</span>
+      <button
+        type="button"
+        class={overdue > 0 ? 'dock urgent' : 'dock'}
+        onClick={() => void setPref({ minimized: false })}
+        aria-label={
+          attention > 0
+            ? `LEARN Tracker, ${attention} due soon. Open.`
+            : 'LEARN Tracker. Open.'
+        }
+        title="Open LEARN Tracker"
+      >
+        {/* Collapsed to a disc; the label only unfurls on hover, so the
+            resting state stays out of the way of the page underneath. */}
+        <span class="dockface">
+          <span class="dockmark">L</span>
+          <span class="dockplus" aria-hidden="true">
+            +
+          </span>
+        </span>
+
+        <span class="docklabel">
+          <span class="docktitle">LEARN Tracker</span>
+          <span class="dockcount">
+            {attention > 0 ? `${attention} due soon` : 'nothing due'}
+          </span>
+        </span>
+
+        {attention > 0 && <span class="dockbadge">{attention}</span>}
       </button>
     );
   }

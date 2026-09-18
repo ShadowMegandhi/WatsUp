@@ -298,17 +298,6 @@
 .linkbtn:hover { color: var(--ink); }
 .linkbtn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 3px; }
 
-.pill {
-  display: flex; align-items: center; gap: 9px;
-  padding: 10px 16px;
-  background: var(--ink); color: #fff;
-  border-radius: 999px; cursor: pointer; user-select: none;
-  box-shadow: 0 10px 28px -6px rgba(20, 24, 35, 0.4);
-  font-weight: 600; font-size: 12.5px; border: 0;
-}
-.pill:hover { background: #262a35; }
-.pill .mark { background: #fff; color: var(--ink); }
-
 @media (prefers-reduced-motion: reduce) {
   .iconbtn.spin { animation: none; }
 }
@@ -343,9 +332,6 @@
   .flag.new { background: #13291f; color: #74d3a0; }
   .banner { background: #2a1614; border-color: #46231f; }
   .banner a { color: var(--late); }
-  .pill { background: #e8eaf0; color: #12141a; }
-  .pill:hover { background: #ffffff; }
-  .pill .mark { background: #12141a; color: #e8eaf0; }
   .body::-webkit-scrollbar-thumb { background: #333846; border-color: var(--paper); }
 }
 
@@ -515,8 +501,6 @@
 }
 
 .foot { background: #ffffff; border-top-color: var(--uw-rule); }
-.pill { background: var(--uw-black); }
-.pill .mark { background: var(--uw-gold); color: var(--uw-black); }
 
 .empty .big { background: none; -webkit-text-fill-color: currentColor; color: var(--done); }
 
@@ -563,6 +547,116 @@
   .foot { background: #1a1814; border-top-color: #2f2a21; }
   .post.new { background: linear-gradient(180deg, rgba(253, 191, 45, 0.08), transparent); }
   .sechead { color: var(--uw-gold); }
-  .pill { background: var(--uw-gold); color: var(--uw-black); }
-  .pill .mark { background: var(--uw-black); color: var(--uw-gold); }
+}
+
+/* ---- minimized dock ----
+ *
+ * A disc at rest, unfurling to a pill on hover. Collapsed, it takes almost no
+ * room on a page it does not own; reached for, it says what it is and what is
+ * waiting. The plus is the affordance: a mark alone does not say it opens.
+ */
+
+.dock {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 52px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--uw-black);
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 10px 28px -8px rgba(17, 16, 20, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  transition: gap 180ms ease, padding-right 180ms ease, box-shadow 180ms ease;
+}
+.dock:hover,
+.dock:focus-visible {
+  gap: 12px;
+  padding-right: 20px;
+  box-shadow: 0 14px 34px -8px rgba(17, 16, 20, 0.6), 0 0 0 1px rgba(253, 191, 45, 0.5) inset;
+}
+.dock:focus-visible { outline: 2px solid var(--uw-gold); outline-offset: 3px; }
+
+.dockface {
+  width: 52px; height: 52px; flex: none;
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+
+.dockmark {
+  width: 30px; height: 30px;
+  border-radius: 9px;
+  display: grid; place-items: center;
+  background: var(--uw-gold);
+  color: var(--uw-black);
+  font-size: 15px; font-weight: 800;
+  transition: transform 180ms ease;
+}
+.dock:hover .dockmark { transform: scale(0.92); }
+
+/* The plus sits on the mark and is what says this opens something. */
+.dockplus {
+  position: absolute;
+  right: 7px; bottom: 7px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  background: #fff;
+  color: var(--uw-black);
+  font-size: 13px; font-weight: 800; line-height: 1;
+  box-shadow: 0 1px 3px rgba(17, 16, 20, 0.4);
+  transition: transform 180ms ease;
+}
+.dock:hover .dockplus { transform: rotate(90deg) scale(1.06); }
+
+/* Width animates rather than display, so the label slides rather than jumps. */
+.docklabel {
+  display: grid;
+  max-width: 0;
+  opacity: 0;
+  text-align: left;
+  white-space: nowrap;
+  transition: max-width 200ms ease, opacity 160ms ease;
+}
+.dock:hover .docklabel,
+.dock:focus-visible .docklabel { max-width: 180px; opacity: 1; }
+
+.docktitle { font-size: 12.5px; font-weight: 650; line-height: 1.25; }
+.dockcount { font-size: 11px; color: rgba(255, 255, 255, 0.62); line-height: 1.25; }
+
+.dockbadge {
+  position: absolute;
+  top: 4px; right: 4px;
+  min-width: 19px; height: 19px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: grid; place-items: center;
+  background: var(--uw-gold);
+  color: var(--uw-black);
+  font-size: 11px; font-weight: 800;
+  border: 2px solid var(--uw-black);
+  transition: opacity 160ms ease;
+}
+.dock:hover .dockbadge { opacity: 0; }
+
+/* Something already late outranks the house colours. */
+.dock.urgent .dockbadge { background: #e5484d; color: #fff; }
+.dock.urgent .dockcount { color: #ffb3b5; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dock, .dockmark, .dockplus, .docklabel, .dockbadge { transition: none; }
+  .dock:hover .dockplus { transform: none; }
+}
+
+@media (prefers-color-scheme: dark) {
+  .dock {
+    background: #1c1a16;
+    box-shadow: 0 10px 28px -8px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(253, 191, 45, 0.18) inset;
+  }
+  .dockbadge { border-color: #1c1a16; }
 }
