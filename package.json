@@ -1,6 +1,6 @@
 {
   "name": "uw-learn-tracker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Cross-course assignment tracker for University of Waterloo LEARN. Not affiliated with the University of Waterloo.",
   "type": "module",

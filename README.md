@@ -1,80 +1,86 @@
 # LEARN Tracker
 
-A Chrome extension that pulls every assignment, quiz and deadline across all
-your University of Waterloo LEARN courses into one place.
+A Chrome extension that pulls every assignment, quiz and deadline across all your
+University of Waterloo LEARN courses into one panel, right on the page.
 
-**Not affiliated with the University of Waterloo.**
+**Not affiliated with, endorsed by, or connected to the University of Waterloo.**
 
-## Status: Phase 1 of 10
+## What it does
 
-The build order is in the plan. Phase 1 is the risk spike: it proves the whole
-architecture is possible before anything is built on top of it.
+A collapsible panel sits on LEARN itself, with six views:
 
-The open question Phase 1 answers is whether an extension can read the Valence
-API using nothing but your existing LEARN sign-in. Everything else assumes yes.
+| | |
+|---|---|
+| **Assigned** | everything still due, soonest first |
+| **Overdue** | what slipped past, so it stays visible |
+| **Done** | what you have ticked off |
+| **Calendar** | the term laid out by date |
+| **News** | course announcements, newest first, with unread marks |
+| **Courses** | per-course breakdown, each with its own colour |
 
-| Phase | What | State |
-|---|---|---|
-| 0 | Project skeleton, build, tests | done |
-| 1 | Connection probe (cookie auth risk spike) | **done, needs your verification** |
-| 2 | Core domain: items, status, merge, diff | next |
-| 3 | Storage and the sync engine | |
-| 4 | Dashboard with the six sections | |
-| 5 | Popup, badge, notifications | |
-| 6 | Background alarm sync | |
-| 7 | Calendar view and grades | |
-| 8 | Syllabus parser | |
-| 9 | ICS export | |
-| 10 | Hardening and store submission | |
+It also reads your Quest schedule to match course names, parses syllabus PDFs for
+assessment dates LEARN does not list (tutorial tests, midterms), and can export to
+your calendar as `.ics`.
 
-## Try it
+## Install
+
+The extension is not on the Chrome Web Store yet, so it installs unpacked. This
+takes about a minute.
+
+1. Download **`learn-tracker.zip`** from the
+   [latest release](../../releases/latest) and unzip it somewhere you will not
+   delete by accident.
+2. Open `chrome://extensions`
+3. Turn on **Developer mode** (top right)
+4. Click **Load unpacked** and pick the unzipped folder
+5. Open <https://learn.uwaterloo.ca> and sign in
+
+Chrome will show a "Developer mode extensions" warning on startup. That is Chrome
+telling you this extension did not come from the Web Store, which is true.
+
+To update later, download the new zip, replace the folder contents, and click the
+reload icon on the extension card. **Then refresh your LEARN tab** — Chrome does
+not re-inject content scripts into tabs that are already open.
+
+### From source
 
 ```
 npm install
 npm run build
 ```
 
-Then in Chrome:
+Then load the `dist` folder with the steps above.
 
-1. Go to `chrome://extensions`
-2. Turn on **Developer mode** (top right)
-3. Click **Load unpacked** and pick the `dist` folder
-4. Open <https://learn.uwaterloo.ca> and sign in
-5. Click the extension icon, then **Run probe**
+## Privacy
 
-Every step should show a green dot. Use **Copy report** at the bottom to grab
-the full output.
+There is no server, no account, no analytics, and nothing is ever sent anywhere.
+Your data stays in `chrome.storage.local` on your own machine.
 
-### Reading the result
+The extension requests access to four UW hosts, and only these:
 
-- **All green** - cookie auth works. The architecture holds.
-- **Amber on step 1** - your LEARN session expired. Sign in and retry.
-- **`Relay idle (Tier B)`** - no LEARN tab is open, so the probe used the
-  background path instead. Worth testing both: open a LEARN tab for Tier A,
-  close them all for Tier B. Tier B is expected to be less reliable, and
-  knowing that now is the point of the spike.
-- **Red on a per-course step only** - that course restricts an endpoint. Not
-  fatal; the design isolates failures per course.
+| Host | Why |
+|---|---|
+| `learn.uwaterloo.ca` | the assignments, quizzes and announcements themselves |
+| `quest.pecs.uwaterloo.ca` | your course schedule, to match course names |
+| `portal.uwaterloo.ca` | schedule data |
+| `outline.uwaterloo.ca` | course outlines, for assessment dates LEARN omits |
+
+It reads these using your existing sign-in, the same way the pages themselves do.
+It never sees or stores your password.
 
 ## How it works
 
 The content script runs on `learn.uwaterloo.ca` and performs the actual fetches,
-because there it runs in a genuine first-party context and your session cookie
-is attached the way the browser always attaches it. It has no domain logic at
-all - it is a dumb relay. The service worker decides what every response means
-and is the single writer of state, so two open LEARN tabs cannot race.
+because there it runs in a genuine first-party context and your session cookie is
+attached the way the browser always attaches it. It has no domain logic at all —
+it is a dumb relay. The service worker decides what every response means and is
+the single writer of state, so two open LEARN tabs cannot race.
 
 The one trap worth knowing about: when a LEARN session expires, the API does
 **not** return 401. It redirects to ADFS, `fetch` follows the redirect, and you
-get a 200 full of sign-in HTML. Code that trusts the status code will parse
-that, fail, decide the API is broken, and retry forever. `src/d2l/authGuard.ts`
-exists solely to catch this, and it is checked before anything else.
-
-## Privacy
-
-Nothing leaves your device. There is no server, no analytics, and no network
-access beyond `learn.uwaterloo.ca` - that is the only host permission the
-extension requests. Your data lives in `chrome.storage.local`.
+get a 200 full of sign-in HTML. Code that trusts the status code will parse that,
+fail, decide the API is broken, and retry forever. `src/d2l/authGuard.ts` exists
+solely to catch this, and it is checked before anything else.
 
 ## Commands
 
@@ -85,3 +91,4 @@ extension requests. Your data lives in `chrome.storage.local`.
 | `npm test` | run the test suite |
 | `npm run test:cov` | with coverage |
 | `npm run typecheck` | types only |
+| `npm run lint` | eslint |
