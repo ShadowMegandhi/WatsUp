@@ -48,8 +48,12 @@ describe('normalizeNews', () => {
     expect(news[0]?.title).toBe('Midterm room change');
   });
 
-  it('links back to the course announcements page', () => {
-    expect(normalizeNews(raw, '100007', ORIGIN)[0]?.url).toContain('/news/100007/');
+  it('links somewhere that exists, rather than a guessed news path', () => {
+    // The first attempt invented a news-tool URL and produced an error page.
+    // Course home is the one pattern already proven in this codebase.
+    expect(normalizeNews(raw, '100007', ORIGIN)[0]?.url).toBe(
+      'https://learn.uwaterloo.ca/d2l/home/100007',
+    );
   });
 
   it('skips hidden posts', () => {

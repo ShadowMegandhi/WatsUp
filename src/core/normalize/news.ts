@@ -22,8 +22,16 @@ export interface Announcement {
 
 const SUMMARY_CHARS = 220;
 
+/**
+ * Where an announcement link should go.
+ *
+ * The first attempt guessed at a news-tool path and produced an error page.
+ * The course home page is the one URL in this codebase already proven to work,
+ * since every course link uses it, and announcements are shown on it. A link
+ * that lands somewhere useful beats a more precise one that lands nowhere.
+ */
 export const deepLinkForNews = (learnOrigin: string, courseId: string): string =>
-  `${learnOrigin}/d2l/le/news/${courseId}/news/list`;
+  `${learnOrigin}/d2l/home/${courseId}`;
 
 interface RawNews {
   readonly Id?: unknown;

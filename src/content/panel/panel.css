@@ -525,6 +525,14 @@
 .posttitle { font-weight: 650; font-size: 12.5px; line-height: 1.35; }
 .postbody { color: var(--soft); font-size: 11.5px; margin-top: 4px; line-height: 1.45; }
 
+/*
+ * The whole card is already the link, so this is a cue and not a control:
+ * faint while resting, taking the course colour once the card is hovered.
+ */
+.postgo { display: inline-block; margin-top: 7px; color: var(--faint); font-size: 11px; font-weight: 600; }
+.postgo::after { content: ' \2192'; }
+.post:hover .postgo { color: var(--c-ink, var(--ink)); }
+
 @media (prefers-color-scheme: dark) {
   .root {
     --paper: #14130f;

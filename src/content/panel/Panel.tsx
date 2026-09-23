@@ -978,6 +978,7 @@ function News({ posts, seen, courses, now }: NewsProps) {
             </div>
             <div class="posttitle">{post.title}</div>
             {post.summary !== '' && <div class="postbody">{post.summary}</div>}
+            <span class="postgo">Open in LEARN</span>
           </a>
         );
       })}
