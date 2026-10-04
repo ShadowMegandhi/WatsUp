@@ -107,9 +107,6 @@ export const buildDiagnostics = (input: DiagnosticsInput): string => {
       out.push(`    ${courses.map((c) => c.code || c.name).join(', ')}`);
     }
 
-    if (sessions.length === 0) {
-    }
-
     out.push('  --- text the page showed, first 1500 characters ---');
     out.push(indent(portal.sample.slice(0, SAMPLE_CHARS)));
     out.push('  --- end ---');
