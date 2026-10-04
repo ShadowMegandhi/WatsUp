@@ -10,5 +10,7 @@ Thumbs.db
 # instructor names and contact details and must not be published.
 corpus-private/
 
-# Agent skills installed by modern-web-guidance. Vendored, not ours.
+# Agent skills installed by modern-web-guidance. Vendored, not ours;
+# skills-lock.json records the source so they can be reinstalled.
 .agents/
+.claude/skills/
