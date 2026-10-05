@@ -73,10 +73,12 @@ export const syncCourse = async (
   if (!gradeValues.ok) failures.push('marks');
   const grades = gradeValues.ok ? normalizeGrades(gradeValues.value.json, course.id, LEARN_ORIGIN) : null;
 
-  // A hidden course grade answers with an error status. That is the
-  // instructor choice, not a failure, so it is never reported as one.
+  // A hidden course grade answers with an error, in whatever shape LEARN
+  // chooses. That is the instructor's choice, so no failure here can stop the
+  // course or claim the student is signed out. Only rate limiting still
+  // halts, because ignoring it would keep hammering LEARN.
   const finalValue = await fetcher.getJson(`/d2l/api/le/${le}/${course.id}/grades/final/values/myGradeValue`);
-  if (!finalValue.ok && isFatal(finalValue.error)) return finalValue;
+  if (!finalValue.ok && finalValue.error.kind === 'rate-limited') return finalValue;
   const courseGrade = finalValue.ok ? normalizeCourseGrade(finalValue.value.json, course.id) : null;
 
   const withEvidence = await applySubmissionEvidence(fetcher, course.id, le, assignmentItems, known, now);

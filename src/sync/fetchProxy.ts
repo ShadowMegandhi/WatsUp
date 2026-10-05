@@ -10,7 +10,7 @@
 
 import { type Result, ok, err } from '@shared/result';
 import { type AppError, authRedirect, httpError, networkError, parseError } from '@shared/errors';
-import { isAuthRedirect, isAuthSuspectBody } from '@d2l/authGuard';
+import { hostChanged, isAuthRedirect, isAuthSuspectBody } from '@d2l/authGuard';
 import { LEARN_ORIGIN, REQUEST_TIMEOUT_MS } from '@shared/constants';
 import type { HeaderLookup } from '@d2l/rateLimit';
 
@@ -38,9 +38,10 @@ export interface Fetcher {
 /**
  * Shared interpretation of a raw response, used by every tier.
  *
- * The order here is load-bearing. The auth check runs before the status check,
- * because an expired session arrives as a 200 carrying sign-in HTML and would
- * otherwise sail straight through.
+ * The order here is load-bearing. Leaving LEARN or a 401 means signed out
+ * whatever else is true. After that, a success status is checked for sign-in
+ * HTML, because an expired session arrives as a 200 carrying the sign-in page.
+ * Only then are error statuses reported as ordinary per-request failures.
  */
 export const interpret = (
   path: string,
@@ -52,7 +53,18 @@ export const interpret = (
     readonly body: string;
   },
 ): Result<FetchOutcome, AppError> => {
-  if (isAuthRedirect({ url: raw.finalUrl, contentType: raw.contentType }, LEARN_ORIGIN)) {
+  // Signed out looks like one of three things: a redirect that ended off
+  // LEARN, an explicit 401, or a 200 carrying a sign-in page. Any other
+  // error status from LEARN itself is an ordinary refusal of that one
+  // request, whatever its body is. D2L serves those as HTML pages, and
+  // reading them as a sign-out once aborted every sync and told a
+  // signed-in student to sign in.
+  if (hostChanged(raw.finalUrl, LEARN_ORIGIN) || raw.status === 401) {
+    return err(authRedirect(raw.finalUrl));
+  }
+
+  const isSuccess = raw.status >= 200 && raw.status < 300;
+  if (isSuccess && isAuthRedirect({ url: raw.finalUrl, contentType: raw.contentType }, LEARN_ORIGIN)) {
     return err(authRedirect(raw.finalUrl));
   }
 

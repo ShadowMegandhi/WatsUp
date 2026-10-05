@@ -66,6 +66,22 @@ describe('syncCourse', () => {
     expect(res.ok && res.value.partialFailures).toEqual([]);
   });
 
+  it('never lets a refused course grade stop the course, even if it looks like a sign-out', async () => {
+    const fetcher = fakeFetcher([
+      ['/1234/calendar/events/', { json: [] }],
+      [
+        '/grades/final/values/myGradeValue',
+        { error: { kind: 'auth-redirect', finalUrl: 'x', message: 'looked like sign-in' } },
+      ],
+      ...base,
+    ]);
+    const res = await syncCourse(fetcher, COURSE, '1.82', NOW);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.courseGrade).toBeNull();
+    expect(res.value.grades?.length).toBe(1);
+  });
+
   it('falls back to the dated calendar shape when the plain one is refused', async () => {
     const fetcher = fakeFetcher([
       ['/1234/calendar/events/myEvents/', { json: [midterm] }],

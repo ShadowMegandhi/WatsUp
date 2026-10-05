@@ -28,7 +28,8 @@ export const isAuthRedirect = (
   learnOrigin: string,
 ): boolean => hostChanged(response.url, learnOrigin) || !looksLikeJson(response.contentType);
 
-const hostChanged = (responseUrl: string, learnOrigin: string): boolean => {
+/** True when the response ended up somewhere other than LEARN, e.g. ADFS. */
+export const hostChanged = (responseUrl: string, learnOrigin: string): boolean => {
   try {
     return new URL(responseUrl).host !== new URL(learnOrigin).host;
   } catch {

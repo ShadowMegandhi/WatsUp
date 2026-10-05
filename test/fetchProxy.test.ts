@@ -55,6 +55,31 @@ describe('interpret', () => {
     }
   });
 
+  it('reports a 403 served as an HTML page from LEARN as an HTTP error, not a sign-out', () => {
+    // A hidden course grade is refused like this. Treating it as a sign-out
+    // stopped the whole sync and asked a signed-in student to sign in.
+    const r = interpret('/d2l/api/le/1.82/1234/grades/final/values/myGradeValue', {
+      ...base,
+      status: 403,
+      contentType: 'text/html; charset=utf-8',
+      body: '<!DOCTYPE html><html><body>Not authorized</body></html>',
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.kind).toBe('http');
+  });
+
+  it('reports a 404 with no content type as an HTTP error, not a sign-out', () => {
+    const r = interpret('/x', { ...base, status: 404, contentType: null, body: '' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.kind).toBe('http');
+  });
+
+  it('still treats a 401 from LEARN as a sign-in problem', () => {
+    const r = interpret('/x', { ...base, status: 401, contentType: 'text/html', body: '<html></html>' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.kind).toBe('auth-redirect');
+  });
+
   it('reports genuinely malformed JSON as a parse error, not an auth problem', () => {
     const r = interpret('/x', { ...base, body: '{"Objects":[' });
     expect(r.ok).toBe(false);
