@@ -13,6 +13,7 @@
 
 import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { docxToLines, looksLikeZip } from '@core/syllabus/docx';
 
 // Must be a file inside the extension. A CDN URL is blocked by the extension
 // CSP and is a hard Chrome Web Store rejection.
@@ -55,7 +56,15 @@ const extract = async (url: string): Promise<ExtractReply> => {
 
   const bytes = await response.arrayBuffer();
   if (bytes.byteLength > MAX_BYTES) {
-    return { ok: false, lines: [], error: 'PDF too large to read' };
+    return { ok: false, lines: [], error: 'Document too large to read' };
+  }
+
+  // Word outlines arrive through the same door. A .docx is a zip, and
+  // its leading bytes say so whatever the URL looks like.
+  const head = new Uint8Array(bytes);
+  if (looksLikeZip(head)) {
+    const docx = await docxToLines(head);
+    return { ok: docx.error === null, lines: docx.lines, error: docx.error };
   }
 
   const doc = await pdfjs.getDocument({

@@ -38,7 +38,10 @@ export const scoreTopic = (topic: TocTopic, now: number): number => {
 
   // Names seen in the wild that the first pass missed entirely.
   if (/\b(handbook|overview|expectations|important dates|key dates)\b/.test(t)) score += 3;
-  if (/\b(assessment|evaluation|grading|deadlines|timetable)\b/.test(t)) score += 3;
+  // "Assessment" alone is usually an online quiz or test link ("3. Trigonometry
+  // Assessment"), so it counts only as part of a schedule-like name.
+  if (/\b(assessment|evaluation|grading)\s+(schedule|plan|overview|outline|breakdown|details|information|summary)\b/.test(t)) score += 3;
+  if (/\b(grading|deadlines|timetable)\b/.test(t)) score += 3;
   if (/\b(read me|start here|begin here)\b/.test(t)) score += 2;
   if (/\bwelcome\b/.test(t) && /\b(course|start)\b/.test(t)) score += 2;
 

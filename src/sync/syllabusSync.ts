@@ -30,7 +30,11 @@ export interface SyllabusOutcome {
 }
 
 const PDF = /\.pdf(\?|$)/i;
-const UNREADABLE = /\.docx?(\?|$)/i;
+const DOCX = /\.docx(\?|$)/i;
+/** Old binary Word files. A .docx is readable; a .doc is not. */
+const UNREADABLE = /\.doc(\?|$)/i;
+/** A zip archive, which here means a .docx fetched as text. */
+const ZIP_HEAD = 'PK\u0003\u0004';
 
 export const syncSyllabus = async (
   fetcher: Fetcher,
@@ -160,8 +164,12 @@ const readDocument = async (
   title: string,
 ): Promise<{ value: readonly string[]; error: string | null }> => {
   if (UNREADABLE.test(url) || UNREADABLE.test(title)) {
-    return { value: [], error: "Word documents cannot be read yet" };
+    return { value: [], error: "Old .doc Word files cannot be read, only .docx" };
   }
+
+  // The offscreen reader handles Word as well as PDF, telling them apart by
+  // their leading bytes.
+  if (DOCX.test(url) || DOCX.test(title)) return await readPdf(url);
 
   // A name that already says PDF saves a round trip.
   if (PDF.test(url) || PDF.test(title)) return await readPdf(url);
@@ -183,7 +191,7 @@ const readDocument = async (
       };
     }
 
-    if (external.value.slice(0, 1024).includes("%PDF")) return await readPdf(url);
+    if (isBinaryDoc(external.value)) return await readPdf(url);
 
     const linked = toLines(external.value);
     if (linked.length === 0) return { value: [], error: "Linked outline had no readable text" };
@@ -194,12 +202,16 @@ const readDocument = async (
   if (text === null) return { value: [], error: "Could not open the syllabus" };
 
   // A PDF fetched as text still begins with its signature.
-  if (text.slice(0, 1024).includes("%PDF")) return await readPdf(url);
+  if (isBinaryDoc(text)) return await readPdf(url);
 
   const parsed = toLines(text);
   if (parsed.length === 0) return { value: [], error: "Syllabus had no readable text" };
   return { value: parsed, error: null };
 };
+
+/** A PDF or .docx fetched as text still begins with its signature. */
+const isBinaryDoc = (text: string): boolean =>
+  text.slice(0, 1024).includes("%PDF") || text.startsWith(ZIP_HEAD);
 
 const readPdf = async (url: string): Promise<{ value: readonly string[]; error: string | null }> => {
   const pdf = await extractPdfLines(url);
