@@ -26,7 +26,7 @@ export const buildDiagnostics = (input: DiagnosticsInput): string => {
   const healthById = new Map(health.map((h) => [h.courseId, h]));
   const out: string[] = [];
 
-  out.push('LEARN Tracker diagnostics');
+  out.push('WatsUp diagnostics');
   out.push(new Date(now).toISOString());
   out.push('');
 

@@ -1,43 +1,45 @@
-# LEARN Tracker
+# WatsUp
 
-A Chrome extension that pulls every assignment, quiz, exam, returned mark and
-announcement across your University of Waterloo LEARN courses into one panel,
-right on the page.
+*What's up at Waterloo.* A Chrome extension that pulls every assignment, quiz,
+exam, returned mark and announcement across your University of Waterloo LEARN
+courses, plus the dated work in your course outlines, into one panel right on
+the LEARN page.
 
 **Not affiliated with, endorsed by, or connected to the University of Waterloo.**
 
 ## What it does
 
-A collapsible panel sits on LEARN itself, with seven views:
+A panel sits on LEARN itself (drag it anywhere, or shrink it to a small W
+circle), with five tabs:
 
 | | |
 |---|---|
-| **Assigned** | everything still due, soonest first |
-| **Overdue** | what slipped past, so it stays visible |
-| **Done** | what you have ticked off |
-| **Calendar** | the term laid out by date, exams included |
-| **Marks** | grades as instructors release them, newest first, plus the course grade where it is shown |
-| **News** | course announcements, newest first, with unread marks |
-| **Courses** | per-course breakdown, each with its own colour |
+| **To do** | what is next, then everything open by day: Overdue, Today, Tomorrow, This week, Later |
+| **Calendar** | the month at a glance, one coloured dot per item |
+| **Marks** | grades as instructors release them, plus the course grade where it is shown |
+| **News** | course announcements, newest first |
+| **Courses** | each course in its own colour, whether its outline was found, and where to add it if not |
 
-### Where exam dates come from
+### Where items come from
 
-The extension does not guess. Exams appear only from two places:
+Both LEARN and your course outlines:
 
-1. **The LEARN course calendar**, when an instructor has put the midterm or exam there.
-2. **The course outline**, and only when a midterm or exam has a single, exact date
-   written on the same line. Anything vaguer ("midterm week", "during the exam period",
-   a date range, "TBA", a date the registrar sets later) is left out. Each one is tagged
-   *from syllabus · check*, and hovering the tag shows the exact outline line it came from.
+1. **LEARN**: Assignments (Dropbox), Quizzes, and the course calendar.
+2. **Course outlines** (a PDF or Word file in LEARN, the course Overview page, or
+   outline.uwaterloo.ca): quizzes, tests, midterms, labs and other work that has a
+   single, exact date written beside it. Anything vaguer ("midterm week", "during the
+   exam period", "TBA") is left out. These are tagged *From course outline*, and
+   hovering the tag shows the exact line they came from.
 
-Assignments and quizzes come only from LEARN itself.
+When LEARN and an outline both list the same thing, LEARN's copy wins, because its
+dates are the live ones.
 
 ## Install
 
 The extension is not on the Chrome Web Store yet, so it installs unpacked. This
 takes about a minute.
 
-1. Download **`learn-tracker.zip`** from the
+1. Download **`watsup.zip`** from the
    [latest release](../../releases/latest) and unzip it somewhere you will not
    delete by accident.
 2. Open `chrome://extensions`

@@ -259,10 +259,10 @@ export const Panel = () => {
         onClick={() => void setPref({ hidden: false })}
         aria-label={
           attention > 0
-            ? `Reopen LEARN Tracker, ${attention} due soon`
-            : 'Reopen LEARN Tracker'
+            ? `Reopen WatsUp, ${attention} due soon`
+            : 'Reopen WatsUp'
         }
-        title="Reopen LEARN Tracker"
+        title="Reopen WatsUp"
       >
         <span class="edgeplus" aria-hidden="true">
           +
@@ -282,22 +282,22 @@ export const Panel = () => {
         onClick={() => void setPref({ minimized: false })}
         aria-label={
           attention > 0
-            ? `LEARN Tracker, ${attention} due soon. Open.`
-            : 'LEARN Tracker. Open.'
+            ? `WatsUp, ${attention} due soon. Open.`
+            : 'WatsUp. Open.'
         }
-        title="Open LEARN Tracker"
+        title="Open WatsUp"
       >
         {/* Collapsed to a disc; the label only unfurls on hover, so the
             resting state stays out of the way of the page underneath. */}
         <span class="dockface">
-          <span class="dockmark">L</span>
+          <span class="dockmark">W</span>
           <span class="dockplus" aria-hidden="true">
             +
           </span>
         </span>
 
         <span class="docklabel">
-          <span class="docktitle">LEARN Tracker</span>
+          <span class="docktitle">WatsUp</span>
           <span class="dockcount">
             {attention > 0 ? `${attention} due soon` : 'nothing due'}
           </span>
@@ -472,9 +472,9 @@ type HeaderProps = {
 function Header({ summary, late, busy, onSync, onMinimize, onHide }: HeaderProps) {
   return (
     <div class="head" data-drag-handle>
-      <span class="mark">L</span>
+      <span class="mark">W</span>
       <span class="titles">
-        <span class="title">LEARN Tracker</span>
+        <span class="title">WatsUp</span>
         <span class={late ? 'summary late' : 'summary'}>{summary}</span>
       </span>
       <button

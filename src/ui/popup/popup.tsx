@@ -135,7 +135,7 @@ const App = () => {
   return (
     <>
       <header>
-        <h1>LEARN Tracker</h1>
+        <h1>WatsUp</h1>
         <span class="phase">{formatSyncedAt(state?.lastSuccessAt ?? null, Date.now())}</span>
       </header>
 

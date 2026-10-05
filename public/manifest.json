@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "LEARN Tracker",
+  "name": "WatsUp",
   "version": "0.3.0",
-  "description": "Your UW LEARN deadlines, exams, marks and announcements in one place. Not affiliated with the University of Waterloo.",
+  "description": "What's up at Waterloo: your LEARN deadlines, exams, marks and announcements in one place. Not affiliated with the University of Waterloo.",
   "minimum_chrome_version": "120",
   "permissions": [
     "storage",
@@ -33,7 +33,7 @@
   ],
   "action": {
     "default_popup": "src/ui/popup/popup.html",
-    "default_title": "LEARN Tracker",
+    "default_title": "WatsUp",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
