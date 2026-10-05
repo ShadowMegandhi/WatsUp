@@ -14,3 +14,6 @@ corpus-private/
 # skills-lock.json records the source so they can be reinstalled.
 .agents/
 .claude/skills/
+
+# dev-only panel preview build (scripts/preview.mjs)
+preview-out/

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { colorFor, shortCourseLabel, PALETTE_SIZE } from '@core/courseColor';
+import { colorFor, shortCourseLabel, PALETTE_SIZE, paletteSlots, assignCourseColors } from '@core/courseColor';
 
 describe('colorFor', () => {
   it('gives the same course the same colour every time', () => {
@@ -49,5 +49,26 @@ describe('shortCourseLabel', () => {
 
   it('leaves a short plain name alone', () => {
     expect(shortCourseLabel('', 'Co-op')).toBe('Co-op');
+  });
+});
+
+describe('paletteSlots', () => {
+  it('gives every course its own colour while there are colours to go round', () => {
+    const ids = ['100001', '100002', '100003', '100007', '100008', '100009', '100012'];
+    const slots = paletteSlots(ids);
+    expect(new Set(slots.values()).size).toBe(ids.length);
+  });
+
+  it('is stable whatever order the courses arrive in', () => {
+    const a = paletteSlots(['3', '1', '2']);
+    const b = paletteSlots(['2', '3', '1']);
+    expect([...a.entries()].sort()).toEqual([...b.entries()].sort());
+  });
+
+  it('colorFor follows the assignment once one is made', () => {
+    const ids = ['x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7', 'x8'];
+    assignCourseColors(ids);
+    expect(new Set(ids.map((id) => colorFor(id).ink)).size).toBe(8);
+    assignCourseColors([]);
   });
 });

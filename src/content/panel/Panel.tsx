@@ -3,27 +3,18 @@
  *
  * Lives on top of LEARN rather than in a browser popup, because a popup closes
  * the moment you click anything else, which makes it useless for working
- * through a list. It drags, minimizes to a pill, and hides.
+ * through a list. It drags, minimizes to a disc, and hides to an edge tab.
  *
- * Tabs rather than one long scroll: Assigned is the daily view, Overdue and
- * Done are separate so neither buries the other, Calendar answers the question
- * a list cannot (how the month is shaped), and Marks and News hold what came
- * back from instructors.
+ * Five tabs, all visible at once: To do is the daily view (overdue first,
+ * then by day), Calendar shows the shape of the month, Marks and News hold
+ * what came back from instructors, and Courses is where outlines connect.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
-import { group, attentionCount, counts, search as filterTasks, type Section } from '@core/selectors';
+import { attentionCount, counts, search as filterTasks } from '@core/selectors';
 import { resolve } from '@core/status';
-import { shortCourseLabel } from '@core/courseColor';
-import {
-  addMonths,
-  buildMonth,
-  byDay,
-  dayKeyOf,
-  initialMonth,
-  WEEKDAY_LABELS,
-  type DayCell,
-} from '@core/calendar';
+import { assignCourseColors, shortCourseLabel } from '@core/courseColor';
+import { addMonths, dayKeyOf, initialMonth } from '@core/calendar';
 import type { Course, CourseHealth, ResolvedTask, SyncState, TaskItem } from '@core/types';
 import type { Announcement } from '@core/normalize/news';
 import {
@@ -47,13 +38,16 @@ import {
   writePanelPrefs,
 } from '@storage/store';
 import { LEARN_ORIGIN } from '@shared/constants';
-import { formatDue, formatSyncedAt, urgency, KIND_LABEL } from './format';
+import type { CommandReply } from '@shared/messages';
+import { formatSyncedAt, summaryLine } from './format';
+import { groupIdOf } from './groups';
 import { buildDiagnostics } from './diagnostics';
-import { colorVars } from './courseStyle';
+import { CourseFilter } from './Row';
+import { TodoView } from './TodoView';
+import { CalendarView } from './CalendarView';
+import { CoursesView } from './CoursesView';
 import { Marks } from './Marks';
 import { News } from './News';
-import { Outlines } from './Outlines';
-import type { CommandReply } from '@shared/messages';
 
 /**
  * Host access as the service worker sees it. chrome.permissions does not
@@ -69,27 +63,15 @@ const grantedOrigins = async (): Promise<readonly string[]> => {
   }
 };
 
-type Tab = 'assigned' | 'overdue' | 'done' | 'calendar' | 'marks' | 'news' | 'courses';
+type Tab = 'todo' | 'calendar' | 'marks' | 'news' | 'courses';
 
 const TABS: readonly { readonly id: Tab; readonly label: string }[] = [
-  { id: 'assigned', label: 'Assigned' },
-  { id: 'overdue', label: 'Overdue' },
-  { id: 'done', label: 'Done' },
+  { id: 'todo', label: 'To do' },
   { id: 'calendar', label: 'Calendar' },
   { id: 'marks', label: 'Marks' },
   { id: 'news', label: 'News' },
   { id: 'courses', label: 'Courses' },
 ];
-
-const ASSIGNED_SECTIONS: readonly Section[] = ['due-soon', 'upcoming', 'undated'];
-
-const SECTION_LABEL: Readonly<Record<Section, string>> = {
-  overdue: 'Overdue',
-  'due-soon': 'Due this week',
-  upcoming: 'Later',
-  undated: 'No due date',
-  completed: 'Done',
-};
 
 export const Panel = () => {
   const [items, setItems] = useState<readonly TaskItem[]>([]);
@@ -105,8 +87,9 @@ export const Panel = () => {
   const [seenGrades, setSeenGrades] = useState<ReadonlySet<string>>(new Set());
   const [hosts, setHosts] = useState<readonly string[]>([]);
 
-  const [tab, setTab] = useState<Tab>('assigned');
+  const [tab, setTab] = useState<Tab>('todo');
   const [query, setQuery] = useState('');
+  const [courseFilter, setCourseFilter] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
 
@@ -133,6 +116,11 @@ export const Panel = () => {
     setMarks(allMarks);
     setSeenGrades(new Set(seenG ?? []));
 
+    // Colours are handed out across the courses actually shown, so no two
+    // of them can end up looking alike.
+    const withWork = new Set(i.map((x) => x.courseId));
+    assignCourseColors(c.filter((x) => isWorthShowing(x, withWork)).map((x) => x.id));
+
     setHosts(await grantedOrigins());
     setItems(i);
     setCourses(c);
@@ -157,22 +145,40 @@ export const Panel = () => {
   const courseById = useMemo(() => new Map(courses.map((c) => [c.id, c])), [courses]);
 
   // Any enrolment that produced coursework counts, regardless of naming.
-  const withItems = useMemo(
-    () => new Set(items.map((i) => i.courseId)),
-    [items],
-  );
+  const withItems = useMemo(() => new Set(items.map((i) => i.courseId)), [items]);
 
   const resolved = useMemo<readonly ResolvedTask[]>(() => {
     const showOther = prefs?.showOtherEnrolments ?? false;
     return items
       .filter((i) => showOther || isWorthShowing(courseById.get(i.courseId), withItems))
       .map((i) => resolve(i, overrides[i.id] ?? null, courseById.get(i.courseId) ?? null, now));
-  }, [items, overrides, courseById, now, prefs?.showOtherEnrolments]);
+  }, [items, overrides, courseById, now, prefs?.showOtherEnrolments, withItems]);
 
-  const visible = useMemo(() => filterTasks(resolved, query), [resolved, query]);
-  const sections = useMemo(() => group(visible, now), [visible, now]);
+  const shownCourses = useMemo(() => {
+    const showOther = prefs?.showOtherEnrolments ?? false;
+    const list = courses.filter((c) => showOther || isWorthShowing(c, withItems));
+    return [...(list.length > 0 ? list : courses)].sort((a, b) =>
+      shortCourseLabel(a.code, a.name).localeCompare(shortCourseLabel(b.code, b.name)),
+    );
+  }, [courses, withItems, prefs?.showOtherEnrolments]);
+
+  const filterCourses = useMemo(() => {
+    const open = new Set(resolved.filter((t) => t.status !== 'completed').map((t) => t.item.courseId));
+    return shownCourses.filter((c) => open.has(c.id));
+  }, [shownCourses, resolved]);
+
+  const byCourse = useMemo(
+    () => (courseFilter === null ? resolved : resolved.filter((t) => t.item.courseId === courseFilter)),
+    [resolved, courseFilter],
+  );
+  const visible = useMemo(() => filterTasks(byCourse, query), [byCourse, query]);
+
   const tally = useMemo(() => counts(resolved, now), [resolved, now]);
   const attention = useMemo(() => attentionCount(resolved, now), [resolved, now]);
+  const dueToday = useMemo(
+    () => resolved.filter((t) => t.status !== 'completed' && groupIdOf(t, now) === 'today').length,
+    [resolved, now],
+  );
 
   const visibleNews = useMemo(
     () =>
@@ -181,6 +187,12 @@ export const Panel = () => {
       ),
     [news, courseById, prefs?.showOtherEnrolments],
   );
+  const shownNews = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q === ''
+      ? visibleNews
+      : visibleNews.filter((n) => `${n.title} ${n.summary}`.toLowerCase().includes(q));
+  }, [visibleNews, query]);
   const unreadNews = visibleNews.filter((n) => !seenNews.has(n.id)).length;
 
   const sync = useCallback(async () => {
@@ -288,19 +300,27 @@ export const Panel = () => {
   }
 
   const tabCount: Readonly<Record<Tab, number>> = {
-    assigned: tally.dueSoon + tally.upcoming + tally.undated,
-    overdue: tally.overdue,
-    done: tally.completed,
+    todo: attention,
     calendar: 0,
     marks: unseenMarks,
     news: unreadNews,
     courses: 0,
   };
 
+  const switchTab = (next: Tab) => {
+    if (tab === 'marks' && next !== 'marks') void markGradesSeen();
+    setTab(next);
+    if (next === 'news') void markNewsRead();
+  };
+
+  const showsSearch = tab === 'todo' || tab === 'news';
+  const showsFilter = tab === 'todo' || tab === 'calendar';
+
   return (
     <div class="panel">
       <Header
-        attention={attention}
+        summary={summaryLine(tally.overdue, dueToday, tally.dueSoon)}
+        late={tally.overdue > 0}
         busy={busy || (syncState?.running ?? false)}
         onSync={sync}
         onMinimize={() => void setPref({ minimized: true })}
@@ -317,17 +337,7 @@ export const Panel = () => {
         </div>
       )}
 
-      <nav
-        class="tabs"
-        role="tablist"
-        // The row scrolls sideways; a plain mouse wheel should move it too.
-        onWheel={(e) => {
-          const row = e.currentTarget;
-          if (e.deltaY === 0 || row.scrollWidth <= row.clientWidth) return;
-          row.scrollLeft += e.deltaY;
-          e.preventDefault();
-        }}
-      >
+      <nav class="tabs" role="tablist">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -335,104 +345,52 @@ export const Panel = () => {
             role="tab"
             class={tab === t.id ? 'tab on' : 'tab'}
             aria-selected={tab === t.id}
-            onClick={(e) => {
-              e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-              if (tab === 'marks' && t.id !== 'marks') void markGradesSeen();
-              setTab(t.id);
-              if (t.id === 'news') void markNewsRead();
-            }}
+            onClick={() => switchTab(t.id)}
           >
             <span>{t.label}</span>
             {tabCount[t.id] > 0 && (
-              <span class={t.id === 'overdue' ? 'tabn late' : 'tabn'}>{tabCount[t.id]}</span>
+              <span class={t.id === 'todo' && tally.overdue > 0 ? 'tabn late' : 'tabn'}>
+                {tabCount[t.id]}
+              </span>
             )}
           </button>
         ))}
       </nav>
 
-      {(tab === 'assigned' || tab === 'overdue' || tab === 'done' || tab === 'news') && (
+      {(showsSearch || showsFilter) && (
         <div class="toolbar">
-          <input
-            class="search"
-            type="search"
-            placeholder="Search assignments"
-            value={query}
-            onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-          />
-          <button
-            type="button"
-            class="toggle"
-            aria-pressed={prefs.showOtherEnrolments}
-            title="Include clubs, residence and other non-course enrolments"
-            onClick={() => void setPref({ showOtherEnrolments: !prefs.showOtherEnrolments })}
-          >
-            All
-          </button>
+          {showsFilter && (
+            <CourseFilter courses={filterCourses} selected={courseFilter} onSelect={setCourseFilter} />
+          )}
+          {showsSearch && (
+            <input
+              class="search"
+              type="search"
+              placeholder={tab === 'news' ? 'Search announcements' : 'Search your to-do list'}
+              aria-label="Search"
+              value={query}
+              onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+            />
+          )}
         </div>
       )}
 
       <div class="body">
-        {tab === 'assigned' && (
-          <Grouped
-            sections={ASSIGNED_SECTIONS.filter((s) => sections[s].length > 0)}
-            data={sections}
+        {tab === 'todo' && (
+          <TodoView
+            tasks={visible}
             newIds={newIds}
             now={now}
+            searching={query.trim() !== '' || courseFilter !== null}
+            showCompleted={prefs.showCompleted}
+            onShowCompleted={(show) => void setPref({ showCompleted: show })}
             onToggle={onToggle}
-            empty={
-              query.trim() === ''
-                ? { line: 'Nothing assigned right now.', sub: 'New work appears here automatically.' }
-                : { line: 'Nothing matches that search.', sub: null }
-            }
-          />
-        )}
-
-        {tab === 'overdue' && (
-          <Flat
-            tasks={sections.overdue}
-            newIds={newIds}
-            now={now}
-            onToggle={onToggle}
-            empty={{ line: 'Nothing overdue.', sub: 'You are caught up.' }}
-          />
-        )}
-
-        {tab === 'done' && (
-          <Flat
-            tasks={sections.completed}
-            newIds={newIds}
-            now={now}
-            onToggle={onToggle}
-            empty={{ line: 'Nothing finished yet.', sub: 'Tick something off and it moves here.' }}
-          />
-        )}
-
-        {tab === 'marks' && <Marks marks={marks} courses={courses} seen={seenGrades} now={now} />}
-
-        {tab === 'news' && <News posts={visibleNews} seen={seenNews} courses={courseById} now={now} />}
-
-        {tab === 'courses' && (
-          <Courses
-            courses={courses}
-            health={health}
-            items={items}
-            diagnostics={() =>
-              buildDiagnostics({
-                items,
-                courses,
-                health,
-                marks,
-                syncState,
-                grantedHosts: hosts,
-                now: Date.now(),
-              })
-            }
           />
         )}
 
         {tab === 'calendar' && (
           <CalendarView
-            tasks={resolved}
+            tasks={byCourse}
             cursor={cursor}
             selectedDay={selectedDay}
             now={now}
@@ -447,6 +405,33 @@ export const Panel = () => {
             }}
             onSelectDay={(key) => setSelectedDay(key === selectedDay ? null : key)}
             onToggle={onToggle}
+          />
+        )}
+
+        {tab === 'marks' && <Marks marks={marks} courses={courses} seen={seenGrades} now={now} />}
+
+        {tab === 'news' && <News posts={shownNews} seen={seenNews} courses={courseById} now={now} />}
+
+        {tab === 'courses' && (
+          <CoursesView
+            courses={shownCourses}
+            health={health}
+            tasks={resolved}
+            helpOpen={prefs.outlinesOpen ?? null}
+            onHelpOpen={(open) => void setPref({ outlinesOpen: open })}
+            showOther={prefs.showOtherEnrolments}
+            onShowOther={(show) => void setPref({ showOtherEnrolments: show })}
+            diagnostics={() =>
+              buildDiagnostics({
+                items,
+                courses,
+                health,
+                marks,
+                syncState,
+                grantedHosts: hosts,
+                now: Date.now(),
+              })
+            }
           />
         )}
       </div>
@@ -467,19 +452,22 @@ export const Panel = () => {
 // --- header ----------------------------------------------------------------
 
 type HeaderProps = {
-  attention: number;
+  summary: string;
+  late: boolean;
   busy: boolean;
   onSync: () => void;
   onMinimize: () => void;
   onHide: () => void;
 };
 
-function Header({ attention, busy, onSync, onMinimize, onHide }: HeaderProps) {
+function Header({ summary, late, busy, onSync, onMinimize, onHide }: HeaderProps) {
   return (
     <div class="head" data-drag-handle>
       <span class="mark">L</span>
-      <span class="title">LEARN Tracker</span>
-      {attention > 0 && <span class="count urgent">{attention} due soon</span>}
+      <span class="titles">
+        <span class="title">LEARN Tracker</span>
+        <span class={late ? 'summary late' : 'summary'}>{summary}</span>
+      </span>
       <button
         type="button"
         class={busy ? 'iconbtn spin' : 'iconbtn'}
@@ -495,410 +483,12 @@ function Header({ attention, busy, onSync, onMinimize, onHide }: HeaderProps) {
       <button
         type="button"
         class="iconbtn"
-        title="Hide. Reopen from the toolbar icon."
+        title="Hide. Reopen from the tab on the edge of the page."
         aria-label="Hide"
         onClick={onHide}
       >
         &#215;
       </button>
-    </div>
-  );
-}
-
-// --- list views ------------------------------------------------------------
-
-type EmptyCopy = { line: string; sub: string | null };
-
-type GroupedProps = {
-  sections: readonly Section[];
-  data: Readonly<Record<Section, readonly ResolvedTask[]>>;
-  newIds: ReadonlySet<string>;
-  now: number;
-  onToggle: (t: ResolvedTask) => void;
-  empty: EmptyCopy;
-};
-
-function Grouped({ sections, data, newIds, now, onToggle, empty }: GroupedProps) {
-  if (sections.length === 0) return <Empty copy={empty} />;
-
-  return (
-    <>
-      {sections.map((s) => (
-        <div class="section" key={s}>
-          <div class={s === 'overdue' ? 'sechead late' : 'sechead'}>
-            <span>{SECTION_LABEL[s]}</span>
-            <span class="n">{data[s].length}</span>
-          </div>
-          {data[s].map((t) => (
-            <Row key={t.item.id} task={t} isNew={newIds.has(t.item.id)} now={now} onToggle={onToggle} />
-          ))}
-        </div>
-      ))}
-    </>
-  );
-}
-
-type FlatProps = {
-  tasks: readonly ResolvedTask[];
-  newIds: ReadonlySet<string>;
-  now: number;
-  onToggle: (t: ResolvedTask) => void;
-  empty: EmptyCopy;
-};
-
-function Flat({ tasks, newIds, now, onToggle, empty }: FlatProps) {
-  if (tasks.length === 0) return <Empty copy={empty} />;
-  return (
-    <div class="section" style="padding-top:8px">
-      {tasks.map((t) => (
-        <Row key={t.item.id} task={t} isNew={newIds.has(t.item.id)} now={now} onToggle={onToggle} />
-      ))}
-    </div>
-  );
-}
-
-type RowProps = {
-  task: ResolvedTask;
-  isNew: boolean;
-  now: number;
-  onToggle: (t: ResolvedTask) => void;
-};
-
-function Row({ task, isNew, now, onToggle }: RowProps) {
-  const done = task.status === 'completed';
-  // The exact outline line is kept so a reading can be checked, not trusted.
-  const syllabusSource = task.item.sources.find((s) => s.system === 'syllabus');
-  const syllabusLine = syllabusSource === undefined ? null : (syllabusSource.detail?.rawLine ?? '');
-  const isExam = task.item.kind === 'exam' || task.item.kind === 'test';
-  const course = task.course;
-
-  return (
-    <div class={done ? 'row done' : 'row'} style={colorVars(course?.id ?? null)}>
-      <button
-        type="button"
-        class="check"
-        role="checkbox"
-        aria-checked={done}
-        aria-label={done ? 'Mark not done' : 'Mark done'}
-        onClick={() => onToggle(task)}
-      >
-        &#10003;
-      </button>
-
-      <div class="main">
-        <a class="name" href={task.item.url} target="_top" rel="noreferrer">
-          {task.effectiveTitle}
-        </a>
-
-        <div class="meta">
-          {course !== null && (
-            <span class="course">{shortCourseLabel(course.code, course.name)}</span>
-          )}
-          {isExam ? (
-            <span class="flag exam">{KIND_LABEL[task.item.kind] ?? 'Exam'}</span>
-          ) : (
-            <span class="kind">{KIND_LABEL[task.item.kind] ?? 'Item'}</span>
-          )}
-          {syllabusLine !== null && (
-            <span class="flag syllabus" title={`Read from your outline: "${syllabusLine}"`}>
-              from syllabus · check
-            </span>
-          )}
-          {isNew && <span class="flag new">new</span>}
-          {!done && (
-            <span class={`due ${urgency(task.effectiveDueAt, now)}`}>
-              {formatDue(task.effectiveDueAt, now)}
-            </span>
-          )}
-        </div>
-
-        {task.completionConflict && (
-          <div class="conflict">LEARN shows a submission, but you marked this not done.</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Empty({ copy }: { copy: EmptyCopy }) {
-  return (
-    <div class="empty">
-      <div class="big">&#10003;</div>
-      <div>{copy.line}</div>
-      {copy.sub !== null && <div class="sub">{copy.sub}</div>}
-    </div>
-  );
-}
-
-// --- calendar --------------------------------------------------------------
-
-/** How many chips fit in a cell before the rest become a count. */
-const CHIPS_PER_DAY = 2;
-
-type CalendarProps = {
-  tasks: readonly ResolvedTask[];
-  cursor: { year: number; month: number };
-  selectedDay: string | null;
-  now: number;
-  newIds: ReadonlySet<string>;
-  onMove: (delta: number) => void;
-  onToday: () => void;
-  onSelectDay: (key: string) => void;
-  onToggle: (t: ResolvedTask) => void;
-};
-
-function CalendarView({
-  tasks,
-  cursor,
-  selectedDay,
-  now,
-  newIds,
-  onMove,
-  onToday,
-  onSelectDay,
-  onToggle,
-}: CalendarProps) {
-  const view = useMemo(() => buildMonth(cursor.year, cursor.month, now), [cursor, now]);
-  const map = useMemo(() => byDay(tasks), [tasks]);
-  const dayTasks = selectedDay === null ? [] : (map.get(selectedDay) ?? []);
-
-  const heading =
-    selectedDay === null
-      ? null
-      : new Date(`${selectedDay}T12:00:00`).toLocaleDateString(undefined, {
-          weekday: 'long',
-          month: 'long',
-          day: 'numeric',
-        });
-
-  return (
-    <div>
-      <div class="calhead">
-        <span class="calmonth">{view.label}</span>
-        <button type="button" class="iconbtn" aria-label="Previous month" onClick={() => onMove(-1)}>
-          &#8249;
-        </button>
-        <button type="button" class="iconbtn" aria-label="Next month" onClick={() => onMove(1)}>
-          &#8250;
-        </button>
-        <button type="button" class="todaybtn" onClick={onToday}>
-          Today
-        </button>
-      </div>
-
-      <div class="calgrid">
-        {WEEKDAY_LABELS.map((d, i) => (
-          <div class="dow" key={`dow-${i}`}>
-            {d}
-          </div>
-        ))}
-
-        {view.weeks.flat().map((cell) => (
-          <Day
-            key={cell.key}
-            cell={cell}
-            tasks={map.get(cell.key)}
-            selected={cell.key === selectedDay}
-            onSelect={() => onSelectDay(cell.key)}
-          />
-        ))}
-      </div>
-
-      <div class="daylist">
-        {selectedDay === null ? (
-          <p class="hint">Pick a day to see what is due.</p>
-        ) : dayTasks.length === 0 ? (
-          <>
-            <div class="dayhead">{heading}</div>
-            <p class="hint">Nothing due.</p>
-          </>
-        ) : (
-          <>
-            <div class="dayhead">{heading}</div>
-            {dayTasks.map((t) => (
-              <Row key={t.item.id} task={t} isNew={newIds.has(t.item.id)} now={now} onToggle={onToggle} />
-            ))}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-type DayProps = {
-  cell: DayCell;
-  tasks: readonly ResolvedTask[] | undefined;
-  selected: boolean;
-  onSelect: () => void;
-};
-
-function Day({ cell, tasks, selected, onSelect }: DayProps) {
-  const list = tasks ?? [];
-  const shown = list.slice(0, CHIPS_PER_DAY);
-  const hidden = list.length - shown.length;
-
-  const anyLate = list.some((t) => t.status === "overdue");
-  const anyOpen = list.some((t) => t.status !== "completed");
-
-  const classes = [
-    'day',
-    cell.inMonth ? '' : 'out',
-    cell.isToday ? 'today' : '',
-    selected ? 'sel' : '',
-    anyLate ? 'late' : anyOpen ? 'has' : '',
-  ]
-    .filter((c) => c !== '')
-    .join(' ');
-
-  const label =
-    list.length === 0
-      ? `${cell.dayOfMonth}, nothing due`
-      : `${cell.dayOfMonth}, ${list.length} due: ${list.map((t) => t.effectiveTitle).join(', ')}`;
-
-  return (
-    <button
-      type="button"
-      class={classes}
-      onClick={onSelect}
-      aria-label={label}
-      style={colorVars(list[0]?.course?.id ?? null)}
-    >
-      <span class="dnum">{cell.dayOfMonth}</span>
-
-      {shown.map((t) => (
-        <span
-          key={t.item.id}
-          class={
-            t.status === 'completed' ? 'chip done' : t.status === 'overdue' ? 'chip late' : 'chip'
-          }
-          style={colorVars(t.course?.id ?? null)}
-          title={t.effectiveTitle}
-        >
-          {t.effectiveTitle}
-        </span>
-      ))}
-
-      {hidden > 0 && <span class="chipmore">{hidden} more</span>}
-    </button>
-  );
-}
-
-// --- courses ---------------------------------------------------------------
-
-type CoursesProps = {
-  courses: readonly Course[];
-  health: readonly CourseHealth[];
-  items: readonly TaskItem[];
-  diagnostics: () => string;
-};
-
-/**
- * What the extension knows about each course, and what it managed to read.
- *
- * This exists because an empty syllabus result and a syllabus that was never
- * found look identical from the outside. A student who cannot tell which one
- * happened has no way to know whether to trust the list.
- */
-function Courses({ courses, health, items, diagnostics }: CoursesProps) {
-  const healthById = new Map(health.map((h) => [h.courseId, h]));
-  const withWork = new Set(items.map((i) => i.courseId));
-  const shown = courses.filter((c) => c.looksAcademic || withWork.has(c.id));
-  const list = shown.length > 0 ? shown : courses;
-
-  if (list.length === 0) {
-    return <Empty copy={{ line: 'No courses loaded yet.', sub: 'Refresh to fetch them.' }} />;
-  }
-
-  return (
-    <div class="section" style="padding-top:8px">
-      <Outlines courses={list} health={healthById} />
-      <Troubleshoot diagnostics={diagnostics} />
-      {list.map((course) => {
-        const h = healthById.get(course.id);
-        const count = items.filter((i) => i.courseId === course.id).length;
-        const fromSyllabus = h?.syllabusItems ?? 0;
-
-        return (
-          <div class="crow" key={course.id} style={colorVars(course.id)}>
-            <span class="cdot" />
-            <div class="main">
-              <a class="name" href={course.url} target="_top" rel="noreferrer">
-                {course.name}
-              </a>
-              <div class="meta">
-                <span class="course">{shortCourseLabel(course.code, course.name)}</span>
-                <span class="kind">
-                  {count} {count === 1 ? 'item' : 'items'}
-                </span>
-                {fromSyllabus > 0 && (
-                  <span class="flag syllabus">
-                    {fromSyllabus} {fromSyllabus === 1 ? 'date' : 'dates'} from syllabus
-                  </span>
-                )}
-              </div>
-              {h?.syllabusNote != null && h.syllabusNote !== '' && (
-                <div class="note">{h.syllabusNote}</div>
-              )}
-              {h?.lastError != null && h.lastError !== '' && (
-                <div class="conflict">{h.lastError}</div>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/**
- * The two things worth doing when something looks wrong.
- *
- * A reset exists because a cache can hold an empty result and there is
- * otherwise no way to ask for another attempt. It keeps ticked-off state,
- * which cannot be rebuilt from anywhere.
- */
-function Troubleshoot({ diagnostics }: { diagnostics: () => string }) {
-  const [copied, setCopied] = useState(false);
-  const [resetting, setResetting] = useState(false);
-
-  const copy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(diagnostics());
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    } catch {
-      // Clipboard can be refused by the page. The reset button still works.
-    }
-  }, [diagnostics]);
-
-  const reset = useCallback(async () => {
-    setResetting(true);
-    try {
-      await chrome.runtime.sendMessage({ type: 'reset-and-sync' });
-    } catch {
-      // The worker may have been evicted; storage updates arrive either way.
-    } finally {
-      setTimeout(() => setResetting(false), 4000);
-    }
-  }, []);
-
-  return (
-    <div class="crow tools">
-      <span class="cdot" />
-      <div class="main">
-        <span class="name">Something look wrong?</span>
-        <div class="note">
-          Start fresh reads everything again from LEARN. Anything ticked off stays ticked.
-        </div>
-        <div class="toolrow">
-          <button type="button" class="toolbtn" onClick={reset} disabled={resetting}>
-            {resetting ? 'Starting fresh...' : 'Start fresh'}
-          </button>
-          <button type="button" class="toolbtn ghost" onClick={copy}>
-            {copied ? 'Copied' : 'Copy diagnostics'}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -914,4 +504,3 @@ const isWorthShowing = (course: Course | undefined, withItems: ReadonlySet<strin
   if (course === undefined) return true;
   return course.looksAcademic || withItems.has(course.id);
 };
-

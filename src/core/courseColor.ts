@@ -31,17 +31,55 @@ const PALETTE: readonly CourseColor[] = [
   { ink: '#7A3E9D', fill: '#F3EAFA', edge: '#DFC8F0', inkDark: '#C79BE8', fillDark: '#261A33' },
   { ink: '#1F7A4D', fill: '#E3F5EB', edge: '#BCE5CE', inkDark: '#74D3A0', fillDark: '#13291F' },
   { ink: '#A8456B', fill: '#FBE9F0', edge: '#F2C9DA', inkDark: '#EC9BBA', fillDark: '#301823' },
-  { ink: '#4A5A8F', fill: '#EBEEF8', edge: '#CBD3EC', inkDark: '#A8B6E4', fillDark: '#1E2338' },
-  { ink: '#0F6FA8', fill: '#E2F0FA', edge: '#B9DCF1', inkDark: '#7EC5EC', fillDark: '#122836' },
+  // Olive and burnt orange replaced slate and sky blue: four blues made
+  // neighbouring courses hard to tell apart at a glance.
+  { ink: '#5F7012', fill: '#F0F3DC', edge: '#DCE3B0', inkDark: '#C3D46A', fillDark: '#23270F' },
+  { ink: '#B05A16', fill: '#FCEBDD', edge: '#F3CFAF', inkDark: '#F0A868', fillDark: '#33200F' },
 ];
 
-export const colorFor = (courseId: string): CourseColor => {
+const hashOf = (courseId: string): number => {
   let h = 2166136261;
   for (let i = 0; i < courseId.length; i += 1) {
     h ^= courseId.charCodeAt(i);
     h = Math.imul(h, 16777619) >>> 0;
   }
-  return PALETTE[h % PALETTE.length] as CourseColor;
+  return h;
+};
+
+/**
+ * Distinct palette slots for one student's courses.
+ *
+ * A bare hash puts two of seven courses on the same colour more often than
+ * not, which defeats the point. Each course still starts from its hashed
+ * slot, and a clash moves to the next free one. Ids are taken in sorted
+ * order, so the same set of courses always gets the same colours.
+ */
+export const paletteSlots = (courseIds: readonly string[]): ReadonlyMap<string, number> => {
+  const slots = new Map<string, number>();
+  const taken = new Set<number>();
+
+  for (const id of [...new Set(courseIds)].sort()) {
+    let slot = hashOf(id) % PALETTE.length;
+    if (taken.size < PALETTE.length) {
+      while (taken.has(slot)) slot = (slot + 1) % PALETTE.length;
+    }
+    taken.add(slot);
+    slots.set(id, slot);
+  }
+
+  return slots;
+};
+
+let assigned: ReadonlyMap<string, number> = new Map();
+
+/** Tells colorFor which courses are shown together, so they never share a colour. */
+export const assignCourseColors = (courseIds: readonly string[]): void => {
+  assigned = paletteSlots(courseIds);
+};
+
+export const colorFor = (courseId: string): CourseColor => {
+  const slot = assigned.get(courseId) ?? hashOf(courseId) % PALETTE.length;
+  return PALETTE[slot] as CourseColor;
 };
 
 export const PALETTE_SIZE = PALETTE.length;
