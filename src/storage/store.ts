@@ -158,6 +158,8 @@ export interface PanelPrefs {
   readonly y: number | null;
   readonly showCompleted: boolean;
   readonly showOtherEnrolments: boolean;
+  /** "Add course outlines" open or folded. Null until the student chooses. */
+  readonly outlinesOpen?: boolean | null;
 }
 
 export const defaultPanelPrefs: PanelPrefs = {

@@ -744,46 +744,97 @@
 
 .build { color: var(--faint); font-size: 10.5px; letter-spacing: 0.02em; }
 
-/* ---- add course outlines (Courses tab) ---- */
+/* ---- add course outlines (Courses tab) ----
+ *
+ * Its own card rather than .crow: .crow lays children out side by side, which
+ * squeezed the steps and every course row into narrow wrapping columns.
+ */
 
-.outlines summary {
-  cursor: pointer;
-  display: flex; align-items: center; gap: 8px;
-  list-style: none;
+.ocard {
+  margin: 0 8px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--raise);
+  overflow: hidden;
 }
-.outlines summary::-webkit-details-marker { display: none; }
-.outlines summary::before { content: '\25B8'; color: var(--faint); font-size: 11px; }
-.outlines[open] summary::before { content: '\25BE'; }
-.outlines summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
 
-.steps { margin: 8px 0 10px; padding-left: 18px; color: var(--soft); font-size: 11.5px; }
-.steps li { margin: 3px 0; }
+.ohdr {
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ohdr:hover { background: var(--wash); }
+.ohdr:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 10px; }
+.ochev { color: var(--soft); font-size: 14px; width: 12px; flex: none; line-height: 1; }
+.otitle { font-weight: 650; font-size: 13px; color: var(--ink); }
+.ohint { margin-left: auto; font-size: 11.5px; color: var(--faint); }
+
+.obody { padding: 0 12px 6px; border-top: 1px solid var(--rule); }
+
+.steps {
+  margin: 10px 0 8px; padding-left: 18px;
+  color: var(--soft); font-size: 12px; line-height: 1.5;
+  white-space: normal; overflow-wrap: break-word;
+}
+.steps li { margin: 2px 0; }
 .steps b { color: var(--ink); font-weight: 650; }
 
-.orow {
-  padding: 8px 0;
-  border-top: 1px solid var(--rule);
+.orow { padding: 9px 0; border-top: 1px solid var(--rule); }
+
+.ohead { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ohead .course { flex: none; white-space: nowrap; }
+.ostate {
+  flex: 1; min-width: 0;
+  font-size: 11.5px; color: var(--late);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.ohead { display: flex; align-items: center; gap: 8px; }
-.ohead .toolbtn { margin-left: auto; text-decoration: none; }
-.ostate { font-size: 11px; color: var(--late); }
 .ostate.ok { color: var(--faint); }
+
+.obtn {
+  all: unset;
+  flex: none; cursor: pointer; white-space: nowrap;
+  padding: 5px 11px; border-radius: 8px;
+  font-size: 11.5px; font-weight: 650; line-height: 1.3;
+  background: var(--ink); color: var(--paper);
+}
+.obtn:hover { filter: brightness(1.15); }
+.obtn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.obtn.ghost { background: transparent; color: var(--soft); border: 1px solid var(--rule); }
+.obtn.ghost:hover { color: var(--ink); border-color: #ccd1dd; }
 
 .olink {
   display: flex; align-items: center; gap: 6px;
   margin-top: 6px; font-size: 11.5px; min-width: 0;
 }
 .olink a {
+  flex: 1; min-width: 0;
   color: var(--focus); text-decoration: none;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .olink a:hover { text-decoration: underline; }
 .oremove {
-  all: unset; cursor: pointer; color: var(--faint);
-  padding: 0 4px; font-size: 14px; line-height: 1; border-radius: 4px;
+  all: unset; flex: none; cursor: pointer; color: var(--faint);
+  padding: 0 4px; font-size: 15px; line-height: 1; border-radius: 4px;
 }
 .oremove:hover { color: var(--late); }
 .oremove:focus-visible { outline: 2px solid var(--focus); }
 
-.oform { display: flex; gap: 6px; margin-top: 6px; }
-.oform .search { padding: 5px 9px; font-size: 11.5px; }
+.oform { display: flex; gap: 6px; margin-top: 7px; }
+.oinput {
+  all: unset;
+  box-sizing: border-box;
+  flex: 1; min-width: 0;
+  padding: 5px 9px;
+  border: 1px solid var(--rule); border-radius: 8px;
+  background: var(--paper); font-size: 11.5px; color: var(--ink);
+  white-space: nowrap; overflow: hidden;
+}
+.oinput:focus { border-color: var(--focus); box-shadow: 0 0 0 3px rgba(47, 95, 208, 0.12); }
+.oinput::placeholder { color: var(--faint); }
+
+.omsg { margin-top: 5px; font-size: 11.5px; color: var(--soft); }
+.omsg.bad { color: var(--late); }
