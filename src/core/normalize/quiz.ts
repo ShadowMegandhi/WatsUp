@@ -23,6 +23,7 @@ interface RawQuiz {
   readonly StartDate?: unknown;
   readonly EndDate?: unknown;
   readonly IsActive?: unknown;
+  readonly GradeItemId?: unknown;
 }
 
 export const deepLinkForQuiz = (learnOrigin: string, courseId: string, quizId: string): string =>
@@ -63,6 +64,7 @@ export const normalizeQuizzes = (
       weightPct: null,
       url,
       sources: [source],
+      gradeItemId: numericId(quiz.GradeItemId),
       learnCompleted: false,
       learnCompletionEvidence: 'none',
       confidence: 1,

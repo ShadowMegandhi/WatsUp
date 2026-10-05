@@ -35,19 +35,20 @@ for (const size of Object.keys(manifest.action?.default_icon ?? {})) {
 // should be made consciously, because broad permissions are the single biggest
 // driver of Chrome Web Store review friction.
 const ALLOWED_PERMISSIONS = new Set([
-  'storage', 'alarms', 'notifications', 'offscreen', 'idle', 'scripting',
+  'storage', 'alarms', 'notifications', 'offscreen', 'idle',
 ]);
-// Portal is read only to learn when labs and tutorials meet, so a syllabus
-// saying 'Lab 1' can be turned into a date.
+// Two hosts, and the README privacy section promises exactly these two.
+// Quest and Portal were dropped in v0.3 along with tutorial placement; adding
+// either back is a privacy change, not a refactor.
 const ALLOWED_HOSTS = new Set([
   'https://learn.uwaterloo.ca/*',
-  'https://portal.uwaterloo.ca/*',
   // UW keeps course outlines centrally, not in LEARN, so a syllabus link often
   // points here and cannot be read without it.
   'https://outline.uwaterloo.ca/*',
-  // Quest is where enrolled sections and their meeting times actually live.
-  'https://quest.pecs.uwaterloo.ca/*',
 ]);
+
+// A leftover bundle from an older build would still load if a manifest named it.
+if (existsSync(join(DIST, 'portal.js'))) problems.push('stale portal.js in dist');
 
 for (const p of manifest.permissions ?? []) {
   if (!ALLOWED_PERMISSIONS.has(p)) problems.push(`unexpected permission: ${p}`);

@@ -2,9 +2,7 @@
  * Toolbar popup: status, and how to finish setting the extension up.
  *
  * The panel on the LEARN page is where the work happens. This is where someone
- * finds out what is connected, what is not, and what to click about it. Three
- * rounds of a schedule never being captured came down to the one required
- * action living inside a tab nobody opened, so it leads here.
+ * finds out what is connected, what is not, and what to click about it.
  */
 
 import { render } from 'preact';
@@ -19,49 +17,41 @@ import {
   readCourses,
   readOverrides,
   readPanelPrefs,
-  readPortalCapture,
   readSyncState,
   writePanelPrefs,
   type PanelPrefs,
-  type StoredPortalCapture,
 } from '@storage/store';
 import { LEARN_ORIGIN } from '@shared/constants';
 import { formatSyncedAt } from '../../content/panel/format';
 import {
   OUTLINE_ORIGINS,
-  SCHEDULE_ORIGINS,
   hasOrigins,
   hostStatuses,
-  registerScheduleScript,
   requestAllOptional,
   requestOrigins,
   type HostStatus,
 } from '@platform/permissions';
 
-const QUEST = 'https://quest.pecs.uwaterloo.ca/';
 const OUTLINE = 'https://outline.uwaterloo.ca/';
 
 const App = () => {
   const [tally, setTally] = useState<SectionCounts | null>(null);
   const [state, setState] = useState<SyncState | null>(null);
   const [prefs, setPrefs] = useState<PanelPrefs | null>(null);
-  const [portal, setPortal] = useState<StoredPortalCapture | null>(null);
   const [health, setHealth] = useState<readonly CourseHealth[]>([]);
   const [busy, setBusy] = useState(false);
   const [openHelp, setOpenHelp] = useState<string | null>(null);
-  const [allowedSchedule, setAllowedSchedule] = useState(true);
   const [allowedOutline, setAllowedOutline] = useState(true);
   const [hosts, setHosts] = useState<readonly HostStatus[]>([]);
   const [denied, setDenied] = useState(false);
 
   const load = useCallback(async () => {
-    const [items, courses, overrides, s, p, cap, h] = await Promise.all([
+    const [items, courses, overrides, s, p, h] = await Promise.all([
       readAllItems(),
       readCourses(),
       readOverrides(),
       readSyncState(),
       readPanelPrefs(),
-      readPortalCapture(),
       readAllHealth(),
     ]);
 
@@ -76,15 +66,12 @@ const App = () => {
     setTally(counts(resolved, now));
     setState(s);
     setPrefs(p);
-    setPortal(cap);
     setHealth(h);
 
     // A withheld host fails silently in two ways at once, so it is checked
     // rather than assumed.
-    setAllowedSchedule(await hasOrigins(SCHEDULE_ORIGINS));
     setAllowedOutline(await hasOrigins(OUTLINE_ORIGINS));
     setHosts(await hostStatuses());
-    await registerScheduleScript();
   }, []);
 
   useEffect(() => {
@@ -119,24 +106,8 @@ const App = () => {
     requestAllOptional()
       .then(async (ok) => {
         setDenied(!ok);
-        if (ok) await registerScheduleScript();
         setHosts(await hostStatuses());
-        setAllowedSchedule(await hasOrigins(SCHEDULE_ORIGINS));
         setAllowedOutline(await hasOrigins(OUTLINE_ORIGINS));
-      })
-      .catch(() => setDenied(true));
-  }, []);
-
-  const connectSchedule = useCallback(() => {
-    requestOrigins(SCHEDULE_ORIGINS)
-      .then(async (granted) => {
-        if (!granted) {
-          setDenied(true);
-          return;
-        }
-        await registerScheduleScript();
-        setAllowedSchedule(true);
-        void chrome.tabs.create({ url: QUEST });
       })
       .catch(() => setDenied(true));
   }, []);
@@ -157,12 +128,6 @@ const App = () => {
   const showPanel = useCallback(async () => {
     setPrefs(await writePanelPrefs({ hidden: false, minimized: false }));
   }, []);
-
-  const sessions = portal?.events?.length ?? 0;
-  const waiting = health.reduce((total, h) => {
-    const m = /(\d{1,2}) of them, but no/.exec(h.syllabusNote ?? '');
-    return total + (m === null ? 0 : Number(m[1]));
-  }, 0);
 
   const needsSignIn = state?.authState === 'needs-signin';
   const outlineTrouble = health.some((h) => (h.syllabusNote ?? '').includes('linked outline'));
@@ -189,38 +154,6 @@ const App = () => {
         )}
 
         <Step
-          done={sessions > 0 && allowedSchedule}
-          title={
-            !allowedSchedule
-              ? 'Allow access to Quest'
-              : sessions > 0
-                ? `Quest connected, ${sessions} sessions`
-                : 'Connect Quest'
-          }
-          detail={
-            !allowedSchedule
-              ? 'Chrome is holding this back. One click grants it.'
-              : sessions > 0
-                ? 'Lab and tutorial dates are known.'
-                : waiting > 0
-                  ? `${waiting} assignments are waiting on your timetable.`
-                  : 'Needed before labs and tutorials can be dated.'
-          }
-          action={
-            !allowedSchedule ? 'Allow and open Quest' : sessions > 0 ? null : 'Open Quest'
-          }
-          onAction={() => void (allowedSchedule ? open(QUEST) : connectSchedule())}
-          help={openHelp === 'quest'}
-          onHelp={() => setOpenHelp(openHelp === 'quest' ? null : 'quest')}
-          helpText={[
-            'Sign in to Quest.',
-            'Open your class schedule: the page listing each course with LEC, LAB and TUT rows.',
-            'A message appears at the bottom right saying what was read.',
-            'Come back to LEARN and press Refresh now.',
-          ]}
-        />
-
-        <Step
           done={!outlineTrouble && allowedOutline}
           title={outlineTrouble ? 'Sign in to course outlines' : 'Course outlines readable'}
           detail={
@@ -235,6 +168,7 @@ const App = () => {
           help={openHelp === 'outline'}
           onHelp={() => setOpenHelp(openHelp === 'outline' ? null : 'outline')}
           helpText={[
+            'Outlines are read for midterm and exam dates only, and only when a date is written beside them.',
             'Some courses publish their outline on outline.uwaterloo.ca, not in LEARN.',
             'Sign in there once so it can be read on your behalf.',
             'Nothing is sent anywhere. It reads the same pages you can already see.',

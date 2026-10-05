@@ -8,7 +8,6 @@
  */
 
 import { contentHash, syllabusId } from '../ids';
-import { kindFromTitle } from '../normalize/dropbox';
 import type { SourceRef, TaskItem } from '../types';
 import type { Candidate } from './extract';
 
@@ -17,6 +16,9 @@ export interface SourceDoc {
   readonly title: string;
   readonly url: string;
 }
+
+/** Below LEARN's 1.0, so the panel can mark it as read from a document. */
+const SYLLABUS_CONFIDENCE = 0.9;
 
 export const candidatesToItems = (
   candidates: readonly Candidate[],
@@ -37,7 +39,8 @@ export const candidatesToItems = (
       id: syllabusId(courseId, c.title),
       courseId,
       title: c.title,
-      kind: kindFromTitle(c.title, 'other'),
+      // The reader only accepts exams, so the kind is known rather than inferred.
+      kind: 'exam',
       dueAt: c.dueAt,
       availableFrom: null,
       endsAt: null,
@@ -48,7 +51,7 @@ export const candidatesToItems = (
       // A syllabus cannot know whether anything was handed in.
       learnCompleted: false,
       learnCompletionEvidence: 'none',
-      confidence: c.confidence,
+      confidence: SYLLABUS_CONFIDENCE,
       contentHash: contentHash([c.title, c.dueAt, c.weightPct, 'syllabus']),
       firstSeenAt: now,
       lastSyncedAt: now,

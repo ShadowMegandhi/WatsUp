@@ -1,22 +1,26 @@
 /**
- * Turning syllabus lines into assessment candidates.
+ * Reading exam dates out of syllabus lines.
  *
- * The rule the whole file serves: do not assume. Three conditions must all
- * hold before a line becomes an item, and any one veto kills it outright.
+ * The rule the whole file serves: do not guess. A line becomes an item only
+ * when all of these hold, and any one failure drops it with no scoring and no
+ * second chance:
  *
- *   1. It names something gradeable.
- *   2. It carries a real date, inside the term window.
- *   3. Nothing about it says otherwise.
+ *   1. It names a midterm or exam.
+ *   2. It carries exactly one complete date, on that same line.
+ *   3. That date is not a range, sits inside the term, and agrees with any
+ *      weekday written beside it.
+ *   4. Nothing on the line says it is a window, a placeholder, a tutorial or
+ *      lab component, a review session, or not happening.
  *
- * A date alone is never enough. In a weekly schedule table most dated rows are
- * lecture topics, and treating those as deadlines would bury the real ones.
+ * Everything else a syllabus says (assignments, quizzes, tutorials) is left
+ * to LEARN, which reports those as facts rather than readings.
  */
 
 import {
-  ASSESSMENT_TERMS,
+  EXAM_TERMS,
+  EXAM_VETO_TERMS,
   NEGATION_TERMS,
   REVIEW_PREFIXES,
-  SUPPORTING_TERMS,
   UNGRADED_TERMS,
   VETO_TERMS,
 } from './lexicon';
@@ -27,70 +31,69 @@ export interface Candidate {
   readonly date: CivilDate;
   readonly dueAt: number;
   readonly weightPct: number | null;
-  readonly confidence: number;
   readonly sourceLine: string;
   readonly matchedTerm: string;
 }
 
-/** Below this, a line is discarded rather than shown. */
-export const ACCEPT_THRESHOLD = 0.62;
+/** A weekday that disagrees with the date drops the format score below this. */
+const MIN_DATE_CONFIDENCE = 0.85;
 
-export const extractCandidates = (
+export const extractExams = (
   lines: readonly string[],
   term: TermContext,
 ): readonly Candidate[] => {
   const out: Candidate[] = [];
 
   for (const raw of lines) {
-    const candidate = readLine(raw, term);
+    const candidate = readExamLine(raw, term);
     if (candidate !== null) out.push(candidate);
   }
 
   return dedupe(out);
 };
 
-export const readLine = (raw: string, term: TermContext): Candidate | null => {
+export const readExamLine = (raw: string, term: TermContext): Candidate | null => {
   const line = raw.replace(/\s+/g, ' ').trim();
-  if (line.length < 6 || line.length > 400) return null;
+  if (line.length < 6 || line.length > 300) return null;
 
   const lower = line.toLowerCase();
 
   if (VETO_TERMS.some((t) => lower.includes(t))) return null;
   if (UNGRADED_TERMS.some((t) => lower.includes(t))) return null;
   if (REVIEW_PREFIXES.some((t) => lower.includes(t))) return null;
+  // Word-bounded, because "lab" is inside "syllabus" and "available".
+  if (EXAM_VETO_TERMS.some((t) => containsWord(lower, t) >= 0)) return null;
 
-  const term_ = firstAssessmentTerm(lower);
-  if (term_ === null) return null;
-  if (isNegated(lower, term_)) return null;
+  const examTerm = firstExamTerm(lower);
+  if (examTerm === null) return null;
+  if (isNegated(lower, examTerm)) return null;
 
   const found = findDate(line, term);
   if (found === null) return null;
+  if (found.confidence < MIN_DATE_CONFIDENCE) return null;
   if (!withinTerm(found.date, term)) return null;
+  if (isRange(line, found.matched)) return null;
 
-  const weightPct = readWeight(line);
-  const confidence = score(found.confidence, lower, weightPct);
-  if (confidence < ACCEPT_THRESHOLD) return null;
+  // A second date on the line means the line is a schedule span or lists two
+  // sittings. Picking one would be a guess.
+  if (findDate(line.replace(found.matched, ' '), term) !== null) return null;
 
   return {
-    title: buildTitle(line, term_, found.matched),
+    title: buildTitle(line, examTerm, found.matched),
     date: found.date,
-    // Exams read as all-day; anything submitted defaults to end of day. Both
-    // land at 23:59 so the item sorts last on its day, where a deadline goes.
+    // Shown as all-day. 23:59 keeps it sorting last on its day.
     dueAt: toInstant(found.date, 23, 59),
-    weightPct,
-    confidence,
+    weightPct: readWeight(line),
     sourceLine: line,
-    matchedTerm: term_,
+    matchedTerm: examTerm,
   };
 };
 
 /**
  * Word-boundary containment without a constructed regex.
  *
- * Building patterns from lexicon entries meant escaping them correctly at
- * two levels, which is fragile for no benefit. An index scan with an
- * explicit boundary check is both clearer and impossible to get subtly
- * wrong.
+ * An index scan with an explicit boundary check avoids escaping lexicon
+ * entries into patterns, which is fragile for no benefit.
  */
 const isWordChar = (c: string | undefined): boolean =>
   c !== undefined && /[a-z0-9]/i.test(c);
@@ -106,24 +109,34 @@ export const containsWord = (haystack: string, needle: string): number => {
     from = at + 1;
   }
 };
-const firstAssessmentTerm = (lower: string): string | null => {
-  // Longest first, so "final exam" wins over "exam" and "tutorial test" over
-  // "test". The longer phrase is the more specific description.
-  const sorted = [...ASSESSMENT_TERMS].sort((a, b) => b.length - a.length);
+
+const firstExamTerm = (lower: string): string | null => {
+  // Longest first, so "final exam" wins over "exam".
+  const sorted = [...EXAM_TERMS].sort((a, b) => b.length - a.length);
   for (const t of sorted) {
-    // Hyphenated entries also match the spaced spelling, since syllabi use both.
     if (containsWord(lower, t) >= 0) return t;
     if (t.includes('-') && containsWord(lower, t.replace(/-/g, ' ')) >= 0) return t;
   }
   return null;
 };
 
-/** "No quiz this week" must never produce a quiz. */
+/** "No midterm this term" must never produce a midterm. */
 const isNegated = (lower: string, term: string): boolean => {
   const at = lower.indexOf(term);
   if (at < 0) return false;
   const before = lower.slice(Math.max(0, at - 28), at);
   return NEGATION_TERMS.some((n) => containsWord(before, n) >= 0);
+};
+
+/**
+ * "Oct 20-24" or "Oct 20 to 24" is a window, not an exam day. The number
+ * after the dash has to be a day: "Oct 23 - 25%" is a date and a weight.
+ */
+const isRange = (line: string, matched: string): boolean => {
+  const at = line.indexOf(matched);
+  if (at < 0) return false;
+  const after = line.slice(at + matched.length);
+  return /^\s*(?:-|–|—|to|through|until)\s*\d{1,2}(?![\d.]|\s*%)/i.test(after);
 };
 
 export const readWeight = (line: string): number | null => {
@@ -134,22 +147,8 @@ export const readWeight = (line: string): number | null => {
 };
 
 /**
- * Confidence combines the date format with corroborating signals. A weight is
- * the strongest of those: a percentage beside an assessment name is the
- * document stating plainly that the thing is marked.
- */
-const score = (dateConfidence: number, lower: string, weightPct: number | null): number => {
-  let s = 0.45 + dateConfidence * 0.35;
-
-  if (weightPct !== null) s += 0.15;
-  if (SUPPORTING_TERMS.some((t) => lower.includes(t))) s += 0.08;
-
-  return Math.min(1, s);
-};
-
-/**
- * A short human title. The source line is kept separately and shown in the UI,
- * so this only has to be recognisable, not complete.
+ * A short human title. The source line is kept separately and shown in the
+ * UI, so this only has to be recognisable.
  */
 export const buildTitle = (line: string, term: string, dateText: string): string => {
   const withoutDate = line.replace(dateText, ' ').replace(/ +/g, ' ').trim();
@@ -158,9 +157,8 @@ export const buildTitle = (line: string, term: string, dateText: string): string
   const at = containsWord(withoutDate.toLowerCase(), term);
   if (at < 0) return base;
 
-  // An ordinal counts only when it sits right after the name. A number
-  // further along the line is usually the weight, and "Midterm 25" would be
-  // both wrong and unstable between two mentions of the same exam.
+  // An ordinal counts only right after the name. A number further along is
+  // usually the weight, and "Midterm 25" would be wrong.
   const rest = withoutDate.slice(at + term.length);
   const m = /^[ #:.-]{0,4}([0-9]{1,2})(?![0-9%])/.exec(rest);
 
@@ -168,9 +166,8 @@ export const buildTitle = (line: string, term: string, dateText: string): string
 };
 
 /**
- * One row per assessment. A syllabus commonly names the same midterm in a
- * grading table and again in a schedule, and two entries for one exam is worse
- * than one. The higher-confidence reading wins.
+ * One row per exam. A syllabus commonly names the same midterm in a grading
+ * table and again in a schedule. The reading with a weight wins.
  */
 const dedupe = (items: readonly Candidate[]): readonly Candidate[] => {
   const best = new Map<string, Candidate>();
@@ -178,71 +175,10 @@ const dedupe = (items: readonly Candidate[]): readonly Candidate[] => {
   for (const c of items) {
     const key = `${c.title.toLowerCase()}|${c.date.y}-${c.date.m}-${c.date.d}`;
     const existing = best.get(key);
-    if (existing === undefined || c.confidence > existing.confidence) best.set(key, c);
+    if (existing === undefined || (existing.weightPct === null && c.weightPct !== null)) {
+      best.set(key, c);
+    }
   }
 
   return [...best.values()].sort((a, b) => a.dueAt - b.dueAt);
-};
-
-/**
- * Lines that came close but were refused.
- *
- * When a syllabus reads cleanly and yields nothing, there are two very
- * different explanations: it genuinely lists no dated assessments, or the
- * rules here are too narrow for how this instructor writes. Those look
- * identical from outside, and guessing between them is how a heuristic system
- * stays broken.
- *
- * Reporting the near misses, with the reason each was refused, turns that
- * guess into a reading.
- */
-export const nearMisses = (
-  lines: readonly string[],
-  term: TermContext,
-  limit = 6,
-): readonly string[] => {
-  const out: string[] = [];
-
-  // Anything that was accepted is not a near miss, and listing it invites
-  // the reader to debug something that already works.
-  const accepted = new Set(extractCandidates(lines, term).map((c) => c.sourceLine));
-
-  for (const raw of lines) {
-    if (out.length >= limit) break;
-
-    const line = raw.replace(/\s+/g, ' ').trim();
-    if (line.length < 6 || line.length > 220) continue;
-
-    if (accepted.has(line)) continue;
-
-    const lower = line.toLowerCase();
-    const named = ASSESSMENT_TERMS.some((t) => lower.includes(t));
-    if (!named) continue;
-
-    const vetoed = VETO_TERMS.find((t) => lower.includes(t));
-    if (vetoed !== undefined) {
-      out.push(`[ignored: mentions "${vetoed}"] ${line}`);
-      continue;
-    }
-
-    const ungraded = UNGRADED_TERMS.find((t) => lower.includes(t));
-    if (ungraded !== undefined) {
-      out.push(`[ignored: looks ungraded, "${ungraded}"] ${line}`);
-      continue;
-    }
-
-    const found = findDate(line, term);
-    if (found === null) {
-      out.push(`[no date found] ${line}`);
-      continue;
-    }
-    if (!withinTerm(found.date, term)) {
-      out.push(`[date outside term] ${line}`);
-      continue;
-    }
-
-    out.push(`[below confidence] ${line}`);
-  }
-
-  return out;
 };

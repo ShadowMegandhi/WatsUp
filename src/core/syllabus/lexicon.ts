@@ -6,52 +6,45 @@
  *
  * The governing rule, from the person who asked for this: do not assume. In a
  * weekly schedule table most dated rows are lecture topics, not assessments,
- * so a date alone is never enough. A row has to name something gradeable
- * before it can become an item.
+ * so a date alone is never enough.
+ *
+ * Since v0.3 the syllabus is read for one thing only: midterms and exams
+ * with a date written on the same line. Assignments, quizzes and labs come
+ * from LEARN itself, where they are facts rather than readings.
  */
 
-/** Names a thing that is marked. Required for a row to be considered at all. */
-export const ASSESSMENT_TERMS: readonly string[] = [
+/** Names an exam. Required for a row to be considered at all. */
+export const EXAM_TERMS: readonly string[] = [
   'midterm',
   'mid-term',
+  'term test',
   'final exam',
   'final examination',
   'exam',
-  'test',
-  'term test',
-  'tutorial test',
-  'quiz',
-  'assignment',
-  'homework',
-  'problem set',
-  'lab',
-  'lab report',
-  'project',
-  'milestone',
-  'proposal',
-  'presentation',
-  'essay',
-  'report',
-  'deliverable',
-  'checkpoint',
-  'peer review',
-  'participation',
 ];
 
-/** Strengthens a row but never creates one on its own. */
-export const SUPPORTING_TERMS: readonly string[] = [
-  'due',
-  'deadline',
-  'submit',
-  'submission',
-  'hand in',
-  'worth',
-  'weight',
-  'graded',
-  'marked',
-  'in tutorial',
-  'in class',
-  'in lecture',
+/**
+ * Rows that name an exam but do not date one. Each is a real pattern:
+ * a window rather than a day, a date the registrar has not set yet, or a
+ * tutorial or lab component that is not the exam itself.
+ */
+export const EXAM_VETO_TERMS: readonly string[] = [
+  'exam period',
+  'examination period',
+  'exam schedule',
+  'exam week',
+  'midterm week',
+  'week of',
+  'registrar',
+  'tba',
+  'tbd',
+  'to be announced',
+  'to be determined',
+  'tutorial',
+  'lab',
+  'quiz',
+  'conflict',
+  'deferred',
 ];
 
 /**
@@ -174,4 +167,4 @@ export const REVIEW_PREFIXES: readonly string[] = [
  * documents already cached on an existing install. Forgetting this is why a
  * heuristics fix can appear to do nothing.
  */
-export const LEXICON_VERSION = 1;
+export const LEXICON_VERSION = 2;

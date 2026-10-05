@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { findDate, inferYear, termFrom, withinTerm, maskNonDates } from '@core/syllabus/dates';
-import { extractCandidates, readLine, readWeight, buildTitle } from '@core/syllabus/extract';
+import { extractExams, readExamLine, readWeight, buildTitle } from '@core/syllabus/extract';
 import { toLines } from '@sync/syllabusSync';
 
 /** Fall 2026: starts September, runs into December. */
 const FALL = termFrom(new Date(2026, 8, 8).getTime(), Date.now());
 
-const one = (line: string) => readLine(line, FALL);
+const one = (line: string) => readExamLine(line, FALL);
 
 describe('year inference', () => {
   it('reads a month after the term start as the term year', () => {
@@ -105,7 +105,7 @@ describe('weights', () => {
 
 describe('titles', () => {
   it('keeps the ordinal, which is what distinguishes siblings', () => {
-    expect(buildTitle('Tutorial Test 2 on Oct 14', 'tutorial test', 'Oct 14')).toBe('Tutorial Test 2');
+    expect(buildTitle('Midterm 2 on Oct 14', 'midterm', 'Oct 14')).toBe('Midterm 2');
   });
 
   it('falls back to the assessment name when there is no ordinal', () => {
@@ -113,125 +113,137 @@ describe('titles', () => {
   });
 });
 
-describe('readLine accepts only clearly labelled assessments', () => {
-  it('reads a midterm with a date', () => {
+describe('readExamLine accepts an exam with its date on the same line', () => {
+  it('reads a midterm with a full date', () => {
     const c = one('Midterm Exam: Friday, October 23, 2026');
     expect(c?.title).toContain('Midterm');
-    expect(c?.date.m).toBe(10);
+    expect(c?.date).toEqual({ y: 2026, m: 10, d: 23 });
   });
 
-  it('reads the math tutorial test case', () => {
-    const c = one('Tutorial Test 3 - Oct 28 - covers sections 4.1 to 4.6');
-    expect(c).not.toBeNull();
-    expect(c?.title).toBe('Tutorial Test 3');
+  it('reads a midterm with a weekday, short date and time', () => {
+    expect(one('Midterm – Fri Oct 23, 7pm')?.date).toEqual({ y: 2026, m: 10, d: 23 });
+  });
+
+  it('reads a schedule row naming the midterm', () => {
+    expect(one('Week 7 | Oct 23 | Midterm (in class)')?.title).toBe('Midterm');
+  });
+
+  it('reads a dated final exam', () => {
+    expect(one('Final Exam: December 14, 2026, 9:00am, PAC')?.title).toBe('Final Exam');
+  });
+
+  it('reads a term test', () => {
+    expect(one('Term Test 2 - Nov 18')?.title).toBe('Term Test 2');
   });
 
   it('picks up a stated weight', () => {
     expect(one('Midterm, Oct 23, worth 25%')?.weightPct).toBe(25);
   });
 
-  it('keeps the source line so the UI can show its working', () => {
-    const line = 'Assignment 4 due November 6';
+  it('keeps the source line so the panel can show it', () => {
+    const line = 'Midterm Exam - Oct 23';
     expect(one(line)?.sourceLine).toBe(line);
   });
 });
 
-describe('readLine refuses to assume', () => {
-  it('ignores a lecture topic that merely has a date', () => {
-    expect(one('Oct 23 - Induction and recursion')).toBeNull();
+describe('readExamLine refuses to guess', () => {
+  it('ignores assignments, which come from LEARN instead', () => {
+    expect(one('Assignment 4 due November 6')).toBeNull();
   });
 
-  it('ignores reading week', () => {
-    expect(one('Oct 12 to Oct 16 - Reading Week, no classes')).toBeNull();
+  it('ignores tutorial tests', () => {
+    expect(one('Tutorial Test 3 - Oct 28 - covers sections 4.1 to 4.6')).toBeNull();
   });
 
-  it('ignores a registrar drop deadline', () => {
-    expect(one('Nov 7 - Last day to drop a course')).toBeNull();
+  it('ignores a lab line that mentions an exam', () => {
+    expect(one('Lab exam Oct 30')).toBeNull();
   });
 
-  it('ignores office hours', () => {
-    expect(one('Office hours Tuesdays from Sept 15')).toBeNull();
+  it('ignores a quiz', () => {
+    expect(one('Quiz 3 Oct 9')).toBeNull();
   });
 
-  it('ignores a cancelled class', () => {
-    expect(one('Oct 13 - No class, Thanksgiving')).toBeNull();
+  it('ignores "midterm week", which is a window rather than a day', () => {
+    expect(one('Midterm week of Oct 19')).toBeNull();
   });
 
-  it('never invents a quiz from a negation', () => {
-    expect(one('Oct 23 - No quiz this week')).toBeNull();
+  it('ignores a final scheduled in the exam period', () => {
+    expect(one('Final exam during the exam period, Dec 9 to Dec 23')).toBeNull();
   });
 
-  it('ignores a practice test', () => {
-    expect(one('Practice test posted Oct 20')).toBeNull();
+  it('ignores a date range', () => {
+    expect(one('Midterm Oct 20-24')).toBeNull();
   });
 
-  it('ignores a review session for a real exam', () => {
+  it('ignores a line with two dates', () => {
+    expect(one('Midterm Oct 23 (makeup Oct 30)')).toBeNull();
+  });
+
+  it('ignores a final set by the registrar', () => {
+    expect(one('Final Exam - date set by the Registrar, Dec 2026')).toBeNull();
+  });
+
+  it('ignores TBA', () => {
+    expect(one('Midterm: Oct 23 TBA')).toBeNull();
+  });
+
+  it('ignores a weekday that disagrees with the date', () => {
+    // Oct 23 2026 is a Friday. A mismatch means something is wrong, so no item.
+    expect(one('Midterm Monday Oct 23')).toBeNull();
+  });
+
+  it('ignores a review session', () => {
     expect(one('Oct 21 - Review for midterm')).toBeNull();
   });
 
-  it('ignores an assessment with no date at all', () => {
+  it('ignores a practice exam', () => {
+    expect(one('Practice exam posted Oct 20')).toBeNull();
+  });
+
+  it('never invents a midterm from a negation', () => {
+    expect(one('Oct 23 - No midterm this term')).toBeNull();
+  });
+
+  it('ignores an exam with no date at all', () => {
     expect(one('There will be a midterm and a final exam')).toBeNull();
   });
 
-  it('ignores a date with nothing gradeable named', () => {
-    expect(one('October 23')).toBeNull();
+  it('ignores reading week', () => {
+    expect(one('Oct 12 - Reading Week, no classes, no exam')).toBeNull();
   });
 
-  it('ignores academic integrity policy text', () => {
-    expect(one('See Policy 71 regarding academic integrity, revised Oct 2026')).toBeNull();
-  });
-
-  it('ignores a textbook reference', () => {
-    expect(one('Textbook chapter 4, published Oct 2019')).toBeNull();
+  it('does not mistake "syllabus" for a lab', () => {
+    // The lab veto is word-bounded; a substring match would drop this line.
+    expect(one('Midterm (see syllabus) Oct 23')?.title).toBe('Midterm');
   });
 });
 
-describe('extractCandidates on a realistic outline', () => {
+describe('extractExams on a realistic outline', () => {
   const lines = [
     'MATH 135 Course Outline, Fall 2026',
     'Instructor office hours: Mondays 2-4pm',
     'Week 1 - Sept 8 - Introduction to proofs',
     'Tutorial Test 1 - Sept 23 - 5%',
-    'Week 5 - Oct 6 - Modular arithmetic',
+    'Assignment 2 due Oct 2',
     'Oct 12 to 16 - Reading Week, no classes',
     'Midterm Exam - Friday October 23, 2026 - 25%',
-    'Tutorial Test 2 - Nov 4 - 5%',
     'Nov 7 - Last day to drop',
     'Final Exam - date set by the Registrar',
   ];
 
-  it('finds the assessments that are actually labelled', () => {
-    const titles = extractCandidates(lines, FALL).map((c) => c.title);
-    expect(titles).toContain('Tutorial Test 1');
-    expect(titles).toContain('Tutorial Test 2');
-    expect(titles.some((t) => t.includes('Midterm'))).toBe(true);
+  it('finds only the dated midterm', () => {
+    expect(extractExams(lines, FALL).map((c) => c.title)).toEqual(['Midterm']);
   });
 
-  it('leaves everything else alone', () => {
-    const titles = extractCandidates(lines, FALL).map((c) => c.title);
-    expect(titles.some((t) => t.includes('Reading'))).toBe(false);
-    expect(titles.some((t) => t.includes('drop'))).toBe(false);
-    expect(titles.some((t) => t.includes('Introduction'))).toBe(false);
+  it('returns exams in date order', () => {
+    const found = extractExams(['Midterm 2 Nov 20', 'Midterm 1 Oct 16'], FALL);
+    expect(found.map((c) => c.title)).toEqual(['Midterm 1', 'Midterm 2']);
   });
 
-  it('does not invent a date for the final exam', () => {
-    // The registrar sets it and the syllabus does not say when. Inventing one
-    // is exactly the failure this whole design is built to avoid.
-    const titles = extractCandidates(lines, FALL).map((c) => c.title);
-    expect(titles.some((t) => t.toLowerCase().includes('final'))).toBe(false);
-  });
-
-  it('returns items in date order', () => {
-    const found = extractCandidates(['Midterm Nov 4 25%', 'Tutorial Test 1 Sept 23 5%'], FALL);
-    expect(found.map((c) => c.title)).toEqual(['Tutorial Test 1', 'Midterm']);
-  });
-
-  it('collapses the same assessment named twice', () => {
-    const found = extractCandidates(
-      ['Midterm Exam October 23, 2026', 'Midterm Exam - Oct 23 - 25%'],
-      FALL,
-    );
+  it('collapses the same exam named twice, keeping the weighted reading', () => {
+    const found = extractExams(['Midterm Exam October 23, 2026', 'Midterm Exam - Oct 23 - 25%'], FALL);
     expect(found).toHaveLength(1);
+    expect(found[0]?.weightPct).toBe(25);
   });
 });
 

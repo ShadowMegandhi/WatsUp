@@ -12,11 +12,7 @@
 import { type Result, ok } from '@shared/result';
 import type { AppError } from '@shared/errors';
 import { flattenToc, pickSyllabusTopics } from '@core/syllabus/discover';
-import { extractCandidates, nearMisses } from '@core/syllabus/extract';
-import { parseRecurring } from '@core/syllabus/recurring';
-import { placeRecurring } from '@core/syllabus/placeRecurring';
-import { shortCourseLabel } from '@core/courseColor';
-import type { DatedSession } from '@core/syllabus/sessions';
+import { extractExams } from '@core/syllabus/extract';
 import { termFrom } from '@core/syllabus/dates';
 import { candidatesToItems, dropDuplicatesOfLearn } from '@core/syllabus/toItems';
 import { LEARN_ORIGIN } from '@shared/constants';
@@ -42,7 +38,6 @@ export const syncSyllabus = async (
   le: string,
   learnItems: readonly TaskItem[],
   now: number,
-  sessions: readonly DatedSession[] = [],
 ): Promise<Result<SyllabusOutcome, AppError>> => {
   const empty = { items: [], docsFound: 0, docsRead: 0, note: null } as const;
 
@@ -68,29 +63,7 @@ export const syncSyllabus = async (
     if (lines.value.length === 0) continue;
 
     read += 1;
-    const candidates = extractCandidates(lines.value, term);
-
-    // A syllabus that counts its assessments rather than dating them needs
-    // the calendar to say when the component meets. Neither half is enough
-    // alone, so nothing is placed until both are present.
-    const placed = placeRecurring(
-      parseRecurring(lines.value),
-      sessions,
-      course.id,
-      shortCourseLabel(course.code, course.name),
-      { topicId: topic.id, title: topic.title, url: topic.url },
-      now,
-    );
-    collected.push(...placed.items);
-    for (const note of placed.unplaced) problems.push(`${topic.title}: ${note}`);
-
-
-    if (candidates.length < NEAR_MISS_UNTIL) {
-      const missed = nearMisses(lines.value, term);
-      if (missed.length > 0) {
-        problems.push(`${topic.title} came close on: ${missed.join(SEP)}`);
-      }
-    }
+    const candidates = extractExams(lines.value, term);
 
     collected.push(
       ...candidatesToItems(
@@ -112,17 +85,13 @@ export const syncSyllabus = async (
       problems.length > 0
         ? problems.join(SEP)
         : read > 0 && items.length === 0
-          ? "Syllabus read, but nothing was clearly labelled with a date."
+          ? "Syllabus read. No midterm or exam had a date written beside it."
           : null,
   });
 };
 
 const SEP = "; ";
 
-/** Below this many finds, report what was skipped so it can be tuned. */
-const NEAR_MISS_UNTIL = 5;
-
-/** Reads one document, choosing the reader by file type. */
 /**
  * Reads one document, deciding how by looking at it rather than at its name.
  *

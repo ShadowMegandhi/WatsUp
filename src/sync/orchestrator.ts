@@ -18,6 +18,7 @@ import { syncCourse } from './courseSync';
 import { dedupeById } from '@core/dedupe';
 import { LEXICON_VERSION } from '@core/syllabus/lexicon';
 import { syncSyllabus } from './syllabusSync';
+import { dropDuplicatesOfLearn } from '@core/syllabus/toItems';
 import { LEARN_ORIGIN } from '@shared/constants';
 import type { Course } from '@core/types';
 import type { Fetcher } from './fetchProxy';
@@ -37,9 +38,12 @@ import {
   writeSeenNewsIds,
   readSyllabusCache,
   writeSyllabusCache,
-  readPortalCapture,
   syllabusCacheIsFresh,
   readAllItems,
+  writeMarksFor,
+  readAllMarks,
+  readSeenGradeIds,
+  writeSeenGradeIds,
 } from '@storage/store';
 
 export interface SyncSummary {
@@ -75,20 +79,6 @@ export const runSync = async (
     const courses = toCourses(parseCourses(enrollments.value.json));
     await writeCourses(courses);
 
-    // Real lab and tutorial dates, if any page has yielded them yet.
-    const capture = await readPortalCapture();
-    const sessions = ((capture?.events ?? []) as readonly {
-      courseCode?: unknown;
-      kind?: unknown;
-      startsAt?: unknown;
-    }[])
-      .filter((e) => typeof e.startsAt === "number")
-      .map((e) => ({
-        courseCode: typeof e.courseCode === "string" ? e.courseCode : null,
-        kind: typeof e.kind === "string" ? e.kind : null,
-        startsAt: e.startsAt as number,
-      }));
-
     const previousIds = new Set(await readSeenIds());
     const isFirstEverSync = previousIds.size === 0;
 
@@ -114,8 +104,11 @@ export const runSync = async (
         continue; // Stored items for this course are deliberately left alone.
       }
 
-      const { items, news, partialFailures } = result.value;
+      const { items, news, grades, courseGrade, partialFailures } = result.value;
       await writeNewsFor(course.id, news);
+      // A failed marks read keeps what was stored. One flaky request must not
+      // empty a student's grade list until the next good sync.
+      if (grades !== null) await writeMarksFor(course.id, { grades, courseGrade });
 
       // The syllabus runs after LEARN, and only ever adds. Anything it reads
       // that LEARN already reported is discarded, because LEARN is live data
@@ -126,18 +119,9 @@ export const runSync = async (
       // invalidated by age and by the parser version, so a shipped fix to
       // the reading rules still takes effect on an existing install.
       const cached = await readSyllabusCache(course.id);
-      // A cached result is stale the moment the schedule it could not use
-      // arrives. The earlier check only caught a cache with nothing in it,
-      // which missed the common case: a course that found its midterm but
-      // could not place its tutorial series, and so looked cached and fine.
-      const captureAt = capture?.schedule.capturedAt ?? 0;
-      const fresh =
-        syllabusCacheIsFresh(cached, now, LEXICON_VERSION, SYLLABUS_TTL_MS) &&
-        captureAt <= (cached?.parsedAt ?? 0);
+      const fresh = syllabusCacheIsFresh(cached, now, LEXICON_VERSION, SYLLABUS_TTL_MS);
 
-      const syllabus = fresh
-        ? null
-        : await syncSyllabus(fetcher, course, versions.le, items, now, sessions);
+      const syllabus = fresh ? null : await syncSyllabus(fetcher, course, versions.le, items, now);
 
       const worthCaching =
         syllabus !== null &&
@@ -161,10 +145,11 @@ export const runSync = async (
       const syllabusNote =
         syllabus !== null && syllabus.ok ? syllabus.value.note : (cached?.note ?? null);
 
-      // Two syllabus documents describing one midterm produce the same id
-      // twice, so identity dedup happens here rather than being left to
-      // whichever reader ran last.
-      const combined = dedupeById([...items, ...extra]);
+      // A cached syllabus reading can predate an exam the instructor has
+      // since put on the LEARN calendar, so LEARN is checked against it again
+      // here. Two documents naming one midterm also share an id, which
+      // dedupeById collapses.
+      const combined = dedupeById([...items, ...dropDuplicatesOfLearn(extra, items)]);
       const merged = preserveFirstSeen(known, combined);
       await writeItemsFor(course.id, merged);
 
@@ -187,6 +172,16 @@ export const runSync = async (
     const seenNews = new Set(await readSeenNewsIds());
     if (seenNews.size === 0 && isFirstEverSync) {
       await writeSeenNewsIds(allNews.map((n) => n.id));
+    }
+
+    // Same rule for marks: a first sync is a baseline, not a pile of news.
+    // Seeded once, the first time marks are ever read, including on an install
+    // upgraded from a version without marks. An empty saved list is not the
+    // same as no list: it means nothing was returned yet, and the first real
+    // mark after that must still show as new.
+    if ((await readSeenGradeIds()) === null) {
+      const marks = await readAllMarks(courses);
+      await writeSeenGradeIds([...marks.values()].flatMap((m) => m.grades.map((g) => g.id)));
     }
 
     const allItems = await readAllItems();

@@ -11,7 +11,6 @@ import { registerRelayPort, hasRelay, relayFetcher } from '@platform/relayHost';
 import { workerFetcher } from '@sync/fetchProxy';
 import { runProbe } from '@sync/probe';
 import { runSync } from '@sync/orchestrator';
-import { registerScheduleScript } from '@platform/permissions';
 import { resolve } from '@core/status';
 import { attentionCount } from '@core/selectors';
 import {
@@ -28,6 +27,7 @@ import {
   clearDerived,
   writeProbeReportCompat,
 } from '@storage/storeCompat';
+import { dropRetiredKeys } from '@storage/store';
 
 chrome.runtime.onConnect.addListener((port) => {
   registerRelayPort(port);
@@ -53,12 +53,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 chrome.runtime.onInstalled.addListener(() => {
   chrome.action.setBadgeBackgroundColor({ color: '#b42318' });
   chrome.alarms.create(ALARM_NAME, { periodInMinutes: SYNC_DEFAULT_INTERVAL_MS / 60_000 });
-  void registerScheduleScript();
+  void dropRetiredKeys();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   void refreshBadge();
-  void registerScheduleScript();
+  void dropRetiredKeys();
 });
 
 /** Guards against several LEARN tabs all asking for a sync at once. */

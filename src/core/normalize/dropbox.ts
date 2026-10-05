@@ -61,6 +61,7 @@ export const normalizeDropboxFolders = (
       weightPct: null,
       url,
       sources: [source],
+      gradeItemId: numericId(folder.GradeItemId),
       // Filled in by a follow-up mysubmissions call; absent means not known yet.
       learnCompleted: false,
       learnCompletionEvidence: 'none',

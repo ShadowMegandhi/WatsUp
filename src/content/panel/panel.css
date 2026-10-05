@@ -204,6 +204,9 @@
 .flag { font-size: 10.5px; font-weight: 650; padding: 1px 6px; border-radius: 5px; }
 .flag.syllabus { background: #fbf0dc; color: #8a5a00; }
 .flag.new { background: #e3f5eb; color: #1f7a4d; }
+/* An exam outranks a weekly item, so it is a badge rather than plain text. */
+.flag.exam { background: #fde8e6; color: #a3261b; text-transform: uppercase; letter-spacing: 0.03em; }
+.flag.syllabus[title] { cursor: help; }
 
 .due { font-size: 11.5px; }
 .due.soon { color: var(--soon); font-weight: 600; }
@@ -330,6 +333,7 @@
   .chip.done { background: var(--wash); border-left-color: #3a4152; }
   .flag.syllabus { background: #2e2413; color: #e8b95c; }
   .flag.new { background: #13291f; color: #74d3a0; }
+  .flag.exam { background: #3a1a17; color: #f0938a; }
   .banner { background: #2a1614; border-color: #46231f; }
   .banner a { color: var(--late); }
   .body::-webkit-scrollbar-thumb { background: #333846; border-color: var(--paper); }
@@ -407,17 +411,6 @@
   .sechead { color: var(--focus); }
 }
 
-.crow.portal { border-left-color: var(--focus); background: linear-gradient(180deg, rgba(47,95,208,0.04), transparent); }
-.crow.portal .cdot { background: var(--focus); }
-
-.portalbtn {
-  display: inline-block; margin-top: 7px;
-  padding: 5px 11px; border-radius: 8px;
-  background: var(--focus); color: #fff;
-  font-size: 11.5px; font-weight: 650; text-decoration: none;
-}
-.portalbtn:hover { filter: brightness(1.08); }
-
 .crow.tools { border-left-color: var(--faint); }
 .crow.tools .cdot { background: var(--faint); }
 
@@ -434,15 +427,6 @@
 .toolbtn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .toolbtn.ghost { background: transparent; color: var(--soft); border: 1px solid var(--rule); }
 .toolbtn.ghost:hover { color: var(--ink); border-color: #ccd1dd; }
-
-.banner.schedule {
-  background: linear-gradient(180deg, rgba(47, 95, 208, 0.1), rgba(47, 95, 208, 0.03));
-  border-bottom-color: rgba(47, 95, 208, 0.25);
-  color: var(--ink);
-}
-.banner.schedule strong { display: block; margin-bottom: 3px; color: var(--focus); }
-.banner.schedule div { color: var(--soft); font-size: 12px; }
-.banner.schedule .portalbtn { margin-top: 8px; }
 
 /* ---- Waterloo palette ----
  *
@@ -532,6 +516,35 @@
 .postgo { display: inline-block; margin-top: 7px; color: var(--faint); font-size: 11px; font-weight: 600; }
 .postgo::after { content: ' \2192'; }
 .post:hover .postgo { color: var(--c-ink, var(--ink)); }
+
+/* ---- marks ---- */
+
+.markrow {
+  display: flex; align-items: center; gap: 10px;
+  text-decoration: none; color: inherit;
+  padding: 9px 13px 9px 12px;
+  margin: 0 8px 3px;
+  border-radius: 10px;
+  background: var(--raise);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--c-ink, var(--rule));
+}
+.markrow:hover { border-color: #d6cdb8; }
+.markrow .name { font-size: 12.5px; }
+.markrow:hover .name { text-decoration: underline; text-underline-offset: 2px; }
+
+.markscore { display: flex; flex-direction: column; align-items: flex-end; flex: none; }
+.markshown { font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; }
+.markpct { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+.sechead.markcourse { align-items: center; }
+.coursegrade {
+  margin-left: auto;
+  font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums;
+  padding: 1px 8px; border-radius: 6px;
+  color: var(--c-ink, var(--ink));
+  background: var(--c-fill, var(--wash));
+}
 
 @media (prefers-color-scheme: dark) {
   .root {

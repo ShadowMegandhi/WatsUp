@@ -12,11 +12,6 @@
  * explanation of why it is needed.
  */
 
-export const SCHEDULE_ORIGINS = [
-  'https://quest.pecs.uwaterloo.ca/*',
-  'https://portal.uwaterloo.ca/*',
-] as const;
-
 export const OUTLINE_ORIGINS = ['https://outline.uwaterloo.ca/*'] as const;
 
 export const hasOrigins = async (origins: readonly string[]): Promise<boolean> => {
@@ -49,42 +44,6 @@ export const grantedOrigins = async (): Promise<readonly string[]> => {
   }
 };
 
-const SCHEDULE_SCRIPT_ID = 'uwlt-schedule';
-
-/**
- * Registers the schedule reader once its hosts are granted.
- *
- * A content script declared in the manifest for a withheld host does not
- * start working when that host is later granted, so it has to be registered
- * dynamically at the moment permission arrives.
- */
-export const registerScheduleScript = async (): Promise<boolean> => {
-  if (!(await hasOrigins(SCHEDULE_ORIGINS))) return false;
-
-  try {
-    const existing = await chrome.scripting.getRegisteredContentScripts({
-      ids: [SCHEDULE_SCRIPT_ID],
-    });
-    if (existing.length > 0) return true;
-
-    await chrome.scripting.registerContentScripts([
-      {
-        id: SCHEDULE_SCRIPT_ID,
-        js: ['portal.js'],
-        matches: [...SCHEDULE_ORIGINS],
-        runAt: 'document_idle',
-        allFrames: true,
-        persistAcrossSessions: true,
-      },
-    ]);
-    return true;
-  } catch {
-    // Already registered by a previous run, or the API refused. Either way the
-    // declared script may still cover it, so this is not worth failing over.
-    return true;
-  }
-};
-
 export interface HostStatus {
   readonly origin: string;
   readonly label: string;
@@ -94,8 +53,6 @@ export interface HostStatus {
 
 const CATALOGUE: readonly { origin: string; label: string; required: boolean }[] = [
   { origin: 'https://learn.uwaterloo.ca/*', label: 'LEARN', required: true },
-  { origin: 'https://quest.pecs.uwaterloo.ca/*', label: 'Quest', required: false },
-  { origin: 'https://portal.uwaterloo.ca/*', label: 'Portal', required: false },
   { origin: 'https://outline.uwaterloo.ca/*', label: 'Course outlines', required: false },
 ];
 
@@ -118,12 +75,6 @@ export const hostStatuses = async (): Promise<readonly HostStatus[]> =>
 
 export const OPTIONAL_ORIGINS = CATALOGUE.filter((h) => !h.required).map((h) => h.origin);
 
-/**
- * Asks for everything still missing, in one prompt.
- *
- * Chrome allows one request per gesture, so asking per host would need a
- * separate click each and most people would stop after the first.
- */
 /**
  * Asks for every optional host, in one prompt, with nothing awaited first.
  *

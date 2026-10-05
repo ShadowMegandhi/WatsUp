@@ -12,7 +12,15 @@
 
 import { STORAGE_SCHEMA_VERSION } from '@shared/constants';
 import { emptySyncState } from '@core/types';
-import type { Course, CourseHealth, SyncState, TaskItem, TaskOverride } from '@core/types';
+import type {
+  Course,
+  CourseGrade,
+  CourseHealth,
+  GradeEntry,
+  SyncState,
+  TaskItem,
+  TaskOverride,
+} from '@core/types';
 import type { Announcement } from '@core/normalize/news';
 
 const K = {
@@ -219,32 +227,21 @@ export const syllabusCacheIsFresh = (
 ): boolean =>
   cache !== null && cache.parserVersion === parserVersion && now - cache.parsedAt < ttlMs;
 
-// --- portal schedule -------------------------------------------------------
+// --- retired keys --------------------------------------------------------
 
 /**
- * The last schedule read from Portal.
- *
- * Stored whole, including the text sample, because when the parse finds
- * nothing the sample is the difference between fixing the parser and guessing.
+ * Keys written by earlier versions that nothing reads any more. Removed so an
+ * upgraded install does not carry a captured class schedule it no longer uses.
  */
-export interface StoredPortalCapture {
-  readonly schedule: {
-    readonly capturedAt: number;
-    readonly termLabel: string | null;
-    readonly termStartsOn: number | null;
-    readonly meetings: readonly unknown[];
-  };
-  readonly events?: readonly unknown[];
-  readonly sawText: boolean;
-  readonly sample: string;
-  readonly url: string;
-}
+const RETIRED_KEYS = ['portalCapture'] as const;
 
-export const writePortalCapture = (capture: StoredPortalCapture): Promise<boolean> =>
-  set({ portalCapture: capture });
-
-export const readPortalCapture = (): Promise<StoredPortalCapture | null> =>
-  get<StoredPortalCapture | null>('portalCapture', null);
+export const dropRetiredKeys = async (): Promise<void> => {
+  try {
+    await area().remove([...RETIRED_KEYS]);
+  } catch {
+    // Best effort. A stale key is harmless; failing startup over it is not.
+  }
+};
 
 // --- reset ----------------------------------------------------------------
 
@@ -290,3 +287,40 @@ export const readSeenNewsIds = (): Promise<readonly string[]> =>
 
 export const writeSeenNewsIds = (ids: readonly string[]): Promise<boolean> =>
   set({ seenNewsIds: ids });
+
+// --- marks -----------------------------------------------------------------
+
+/**
+ * Returned marks, per course like announcements, so one course failing to
+ * load leaves the others as they were.
+ */
+export interface StoredMarks {
+  readonly grades: readonly GradeEntry[];
+  readonly courseGrade: CourseGrade | null;
+}
+
+const emptyMarks: StoredMarks = { grades: [], courseGrade: null };
+
+export const readMarksFor = (courseId: string): Promise<StoredMarks> =>
+  get<StoredMarks>(`marks:${courseId}`, emptyMarks);
+
+export const writeMarksFor = (courseId: string, marks: StoredMarks): Promise<boolean> =>
+  set({ [`marks:${courseId}`]: marks });
+
+/** Keyed by course id, for the courses the caller already holds. */
+export const readAllMarks = async (
+  courses: readonly Course[],
+): Promise<ReadonlyMap<string, StoredMarks>> => {
+  const all = await Promise.all(courses.map(async (c) => [c.id, await readMarksFor(c.id)] as const));
+  return new Map(all);
+};
+
+/**
+ * Mark ids already seen, so a newly returned mark can be flagged. Null means
+ * the baseline has never been saved, which is different from an empty list.
+ */
+export const readSeenGradeIds = (): Promise<readonly string[] | null> =>
+  get<readonly string[] | null>('seenGradeIds', null);
+
+export const writeSeenGradeIds = (ids: readonly string[]): Promise<boolean> =>
+  set({ seenGradeIds: ids });

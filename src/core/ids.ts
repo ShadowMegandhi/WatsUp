@@ -12,7 +12,11 @@
 
 import type { TaskId } from './types';
 
-export const learnId = (courseId: string, system: 'dropbox' | 'quiz', sourceId: string): TaskId =>
+export const learnId = (
+  courseId: string,
+  system: 'dropbox' | 'quiz' | 'calendar',
+  sourceId: string,
+): TaskId =>
   `learn:${courseId}:${system}:${sourceId}`;
 
 export const syllabusId = (courseId: string, title: string): TaskId =>

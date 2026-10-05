@@ -1,26 +1,36 @@
 # LEARN Tracker
 
-A Chrome extension that pulls every assignment, quiz and deadline across all your
-University of Waterloo LEARN courses into one panel, right on the page.
+A Chrome extension that pulls every assignment, quiz, exam, returned mark and
+announcement across your University of Waterloo LEARN courses into one panel,
+right on the page.
 
 **Not affiliated with, endorsed by, or connected to the University of Waterloo.**
 
 ## What it does
 
-A collapsible panel sits on LEARN itself, with six views:
+A collapsible panel sits on LEARN itself, with seven views:
 
 | | |
 |---|---|
 | **Assigned** | everything still due, soonest first |
 | **Overdue** | what slipped past, so it stays visible |
 | **Done** | what you have ticked off |
-| **Calendar** | the term laid out by date |
+| **Calendar** | the term laid out by date, exams included |
+| **Marks** | grades as instructors release them, newest first, plus the course grade where it is shown |
 | **News** | course announcements, newest first, with unread marks |
 | **Courses** | per-course breakdown, each with its own colour |
 
-It also reads your Quest schedule to match course names, parses syllabus PDFs for
-assessment dates LEARN does not list (tutorial tests, midterms), and can export to
-your calendar as `.ics`.
+### Where exam dates come from
+
+The extension does not guess. Exams appear only from two places:
+
+1. **The LEARN course calendar**, when an instructor has put the midterm or exam there.
+2. **The course outline**, and only when a midterm or exam has a single, exact date
+   written on the same line. Anything vaguer ("midterm week", "during the exam period",
+   a date range, "TBA", a date the registrar sets later) is left out. Each one is tagged
+   *from syllabus · check*, and hovering the tag shows the exact outline line it came from.
+
+Assignments and quizzes come only from LEARN itself.
 
 ## Install
 
@@ -56,14 +66,15 @@ Then load the `dist` folder with the steps above.
 There is no server, no account, no analytics, and nothing is ever sent anywhere.
 Your data stays in `chrome.storage.local` on your own machine.
 
-The extension requests access to four UW hosts, and only these:
+The extension requests access to two UW hosts, and only these:
 
 | Host | Why |
 |---|---|
-| `learn.uwaterloo.ca` | the assignments, quizzes and announcements themselves |
-| `quest.pecs.uwaterloo.ca` | your course schedule, to match course names |
-| `portal.uwaterloo.ca` | schedule data |
-| `outline.uwaterloo.ca` | course outlines, for assessment dates LEARN omits |
+| `learn.uwaterloo.ca` | assignments, quizzes, calendar exams, marks and announcements |
+| `outline.uwaterloo.ca` | course outlines, read only for dated midterms and exams |
+
+Earlier versions also read Quest and Portal. Since v0.3.0 they do not, and the
+extension no longer asks for access to them.
 
 It reads these using your existing sign-in, the same way the pages themselves do.
 It never sees or stores your password.

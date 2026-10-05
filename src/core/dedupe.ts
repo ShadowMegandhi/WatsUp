@@ -53,7 +53,7 @@ const mergePair = (a: TaskItem, b: TaskItem): TaskItem => {
 };
 
 const isFromLearn = (item: TaskItem): boolean =>
-  item.sources.some((s) => s.system === 'dropbox' || s.system === 'quiz');
+  item.sources.some((s) => s.system === 'dropbox' || s.system === 'quiz' || s.system === 'calendar');
 
 const prefer = (a: TaskItem, b: TaskItem): TaskItem => {
   const aLearn = isFromLearn(a);

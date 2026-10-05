@@ -5,15 +5,16 @@
  * the moment you click anything else, which makes it useless for working
  * through a list. It drags, minimizes to a pill, and hides.
  *
- * Four tabs rather than one long scroll: Assigned is the daily view, Overdue
- * and Done are separate so neither buries the other, and Calendar answers the
- * question a list cannot, which is how the month is shaped.
+ * Tabs rather than one long scroll: Assigned is the daily view, Overdue and
+ * Done are separate so neither buries the other, Calendar answers the question
+ * a list cannot (how the month is shaped), and Marks and News hold what came
+ * back from instructors.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { group, attentionCount, counts, search as filterTasks, type Section } from '@core/selectors';
 import { resolve } from '@core/status';
-import { colorFor, shortCourseLabel } from '@core/courseColor';
+import { shortCourseLabel } from '@core/courseColor';
 import {
   addMonths,
   buildMonth,
@@ -38,23 +39,29 @@ import {
   readAllNews,
   readSeenNewsIds,
   writeSeenNewsIds,
-  readPortalCapture,
-  type StoredPortalCapture,
+  readAllMarks,
+  readSeenGradeIds,
+  writeSeenGradeIds,
+  type StoredMarks,
   toggleCompletion,
   writePanelPrefs,
 } from '@storage/store';
 import { LEARN_ORIGIN } from '@shared/constants';
 import { formatDue, formatSyncedAt, urgency, KIND_LABEL } from './format';
 import { buildDiagnostics } from './diagnostics';
+import { colorVars } from './courseStyle';
+import { Marks } from './Marks';
+import { News } from './News';
 import { grantedOrigins } from '@platform/permissions';
 
-type Tab = 'assigned' | 'overdue' | 'done' | 'calendar' | 'news' | 'courses';
+type Tab = 'assigned' | 'overdue' | 'done' | 'calendar' | 'marks' | 'news' | 'courses';
 
 const TABS: readonly { readonly id: Tab; readonly label: string }[] = [
   { id: 'assigned', label: 'Assigned' },
   { id: 'overdue', label: 'Overdue' },
   { id: 'done', label: 'Done' },
   { id: 'calendar', label: 'Calendar' },
+  { id: 'marks', label: 'Marks' },
   { id: 'news', label: 'News' },
   { id: 'courses', label: 'Courses' },
 ];
@@ -69,19 +76,6 @@ const SECTION_LABEL: Readonly<Record<Section, string>> = {
   completed: 'Done',
 };
 
-/** Inline custom properties, so one course colour drives chip, tag and stripe. */
-const colorVars = (courseId: string | null): Record<string, string> => {
-  if (courseId === null) return {};
-  const c = colorFor(courseId);
-  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-  return {
-    '--c-ink': dark ? c.inkDark : c.ink,
-    '--c-fill': dark ? c.fillDark : c.fill,
-    '--c-edge': dark ? c.inkDark : c.edge,
-    '--stripe': dark ? c.inkDark : c.ink,
-  };
-};
-
 export const Panel = () => {
   const [items, setItems] = useState<readonly TaskItem[]>([]);
   const [courses, setCourses] = useState<readonly Course[]>([]);
@@ -92,8 +86,8 @@ export const Panel = () => {
   const [health, setHealth] = useState<readonly CourseHealth[]>([]);
   const [news, setNews] = useState<readonly Announcement[]>([]);
   const [seenNews, setSeenNews] = useState<ReadonlySet<string>>(new Set());
-  const [portal, setPortal] = useState<{ meetings: number; term: string | null } | null>(null);
-  const [rawPortal, setRawPortal] = useState<StoredPortalCapture | null>(null);
+  const [marks, setMarks] = useState<ReadonlyMap<string, StoredMarks>>(new Map());
+  const [seenGrades, setSeenGrades] = useState<ReadonlySet<string>>(new Set());
   const [hosts, setHosts] = useState<readonly string[]>([]);
 
   const [tab, setTab] = useState<Tab>('assigned');
@@ -120,14 +114,11 @@ export const Panel = () => {
     setNews(posts);
     setSeenNews(new Set(seenPosts));
 
-    const capture = await readPortalCapture();
-    setRawPortal(capture);
+    const [allMarks, seenG] = await Promise.all([readAllMarks(c), readSeenGradeIds()]);
+    setMarks(allMarks);
+    setSeenGrades(new Set(seenG ?? []));
+
     setHosts(await grantedOrigins());
-    setPortal(
-      capture === null
-        ? null
-        : { meetings: capture.schedule.meetings.length, term: capture.schedule.termLabel },
-    );
     setItems(i);
     setCourses(c);
     setOverrides(o);
@@ -177,17 +168,6 @@ export const Panel = () => {
   );
   const unreadNews = visibleNews.filter((n) => !seenNews.has(n.id)).length;
 
-  // Read from the notes the syllabus pass already writes, so the count is
-  // whatever the reader actually found rather than a second guess at it.
-  const waitingOnSchedule = useMemo(
-    () =>
-      health.reduce((total, h) => {
-        const m = /(d{1,2}) of them, but no/.exec(h.syllabusNote ?? "");
-        return total + (m === null ? 0 : Number(m[1]));
-      }, 0),
-    [health],
-  );
-
   const sync = useCallback(async () => {
     setBusy(true);
     try {
@@ -214,6 +194,20 @@ export const Panel = () => {
     await writeSeenNewsIds(news.map((n) => n.id));
     setSeenNews(new Set(news.map((n) => n.id)));
   }, [news]);
+
+  const allGradeIds = useMemo(
+    () => [...marks.values()].flatMap((m) => m.grades.map((g) => g.id)),
+    [marks],
+  );
+  const unseenMarks = allGradeIds.filter((id) => !seenGrades.has(id)).length;
+
+  // Marked seen on leaving the tab rather than opening it, so "Just returned"
+  // is still there to read the first time the tab is opened.
+  const markGradesSeen = useCallback(async () => {
+    if (allGradeIds.every((id) => seenGrades.has(id))) return;
+    await writeSeenGradeIds(allGradeIds);
+    setSeenGrades(new Set(allGradeIds));
+  }, [allGradeIds, seenGrades]);
 
   const setPref = useCallback(async (patch: Partial<PanelPrefs>) => {
     setPrefs(await writePanelPrefs(patch));
@@ -283,6 +277,7 @@ export const Panel = () => {
     overdue: tally.overdue,
     done: tally.completed,
     calendar: 0,
+    marks: unseenMarks,
     news: unreadNews,
     courses: 0,
   };
@@ -296,19 +291,6 @@ export const Panel = () => {
         onMinimize={() => void setPref({ minimized: true })}
         onHide={() => void setPref({ hidden: true })}
       />
-
-      {(portal?.meetings ?? 0) === 0 && waitingOnSchedule > 0 && (
-        <div class="banner schedule">
-          <strong>{waitingOnSchedule} assignments are waiting on your timetable.</strong>
-          <div>
-            Your outline says how many there are but not when. Open Quest and view your class
-            schedule once, and they will be placed on your real tutorial and lab dates.
-          </div>
-          <a class="portalbtn" href="https://quest.pecs.uwaterloo.ca/" target="_blank" rel="noreferrer">
-            Open Quest
-          </a>
-        </div>
-      )}
 
       {syncState?.authState === 'needs-signin' && (
         <div class="banner">
@@ -329,6 +311,7 @@ export const Panel = () => {
             class={tab === t.id ? 'tab on' : 'tab'}
             aria-selected={tab === t.id}
             onClick={() => {
+              if (tab === 'marks' && t.id !== 'marks') void markGradesSeen();
               setTab(t.id);
               if (t.id === 'news') void markNewsRead();
             }}
@@ -341,7 +324,7 @@ export const Panel = () => {
         ))}
       </nav>
 
-      {tab !== 'calendar' && tab !== 'courses' && (
+      {(tab === 'assigned' || tab === 'overdue' || tab === 'done' || tab === 'news') && (
         <div class="toolbar">
           <input
             class="search"
@@ -398,6 +381,8 @@ export const Panel = () => {
           />
         )}
 
+        {tab === 'marks' && <Marks marks={marks} courses={courses} seen={seenGrades} now={now} />}
+
         {tab === 'news' && <News posts={visibleNews} seen={seenNews} courses={courseById} now={now} />}
 
         {tab === 'courses' && (
@@ -405,14 +390,13 @@ export const Panel = () => {
             courses={courses}
             health={health}
             items={items}
-            portal={portal}
             diagnostics={() =>
               buildDiagnostics({
                 items,
                 courses,
                 health,
+                marks,
                 syncState,
-                portal: rawPortal,
                 grantedHosts: hosts,
                 now: Date.now(),
               })
@@ -556,7 +540,10 @@ type RowProps = {
 
 function Row({ task, isNew, now, onToggle }: RowProps) {
   const done = task.status === 'completed';
-  const fromSyllabus = task.item.sources.some((s) => s.system === 'syllabus');
+  // The exact outline line is kept so a reading can be checked, not trusted.
+  const syllabusSource = task.item.sources.find((s) => s.system === 'syllabus');
+  const syllabusLine = syllabusSource === undefined ? null : (syllabusSource.detail?.rawLine ?? '');
+  const isExam = task.item.kind === 'exam' || task.item.kind === 'test';
   const course = task.course;
 
   return (
@@ -581,8 +568,16 @@ function Row({ task, isNew, now, onToggle }: RowProps) {
           {course !== null && (
             <span class="course">{shortCourseLabel(course.code, course.name)}</span>
           )}
-          <span class="kind">{KIND_LABEL[task.item.kind] ?? 'Item'}</span>
-          {fromSyllabus && <span class="flag syllabus">from syllabus</span>}
+          {isExam ? (
+            <span class="flag exam">{KIND_LABEL[task.item.kind] ?? 'Exam'}</span>
+          ) : (
+            <span class="kind">{KIND_LABEL[task.item.kind] ?? 'Item'}</span>
+          )}
+          {syllabusLine !== null && (
+            <span class="flag syllabus" title={`Read from your outline: "${syllabusLine}"`}>
+              from syllabus · check
+            </span>
+          )}
           {isNew && <span class="flag new">new</span>}
           {!done && (
             <span class={`due ${urgency(task.effectiveDueAt, now)}`}>
@@ -768,7 +763,6 @@ type CoursesProps = {
   courses: readonly Course[];
   health: readonly CourseHealth[];
   items: readonly TaskItem[];
-  portal: { meetings: number; term: string | null } | null;
   diagnostics: () => string;
 };
 
@@ -779,7 +773,7 @@ type CoursesProps = {
  * found look identical from the outside. A student who cannot tell which one
  * happened has no way to know whether to trust the list.
  */
-function Courses({ courses, health, items, portal, diagnostics }: CoursesProps) {
+function Courses({ courses, health, items, diagnostics }: CoursesProps) {
   const healthById = new Map(health.map((h) => [h.courseId, h]));
   const withWork = new Set(items.map((i) => i.courseId));
   const shown = courses.filter((c) => c.looksAcademic || withWork.has(c.id));
@@ -791,7 +785,6 @@ function Courses({ courses, health, items, portal, diagnostics }: CoursesProps) 
 
   return (
     <div class="section" style="padding-top:8px">
-      <PortalRow portal={portal} />
       <Troubleshoot diagnostics={diagnostics} />
       {list.map((course) => {
         const h = healthById.get(course.id);
@@ -810,7 +803,11 @@ function Courses({ courses, health, items, portal, diagnostics }: CoursesProps) 
                 <span class="kind">
                   {count} {count === 1 ? 'item' : 'items'}
                 </span>
-                {fromSyllabus > 0 && <span class="flag syllabus">{fromSyllabus} from syllabus</span>}
+                {fromSyllabus > 0 && (
+                  <span class="flag syllabus">
+                    {fromSyllabus} exam {fromSyllabus === 1 ? 'date' : 'dates'} from syllabus
+                  </span>
+                )}
               </div>
               {h?.syllabusNote != null && h.syllabusNote !== '' && (
                 <div class="note">{h.syllabusNote}</div>
@@ -822,46 +819,6 @@ function Courses({ courses, health, items, portal, diagnostics }: CoursesProps) 
           </div>
         );
       })}
-    </div>
-  );
-}
-
-/**
- * Whether a class schedule has been read from Portal.
- *
- * Syllabi say "Lab 1" and "Tut 3", not dates. Without knowing when those
- * actually meet, there is no way to place that work on a calendar, so this
- * says plainly whether that link exists yet.
- */
-function PortalRow({ portal }: { portal: { meetings: number; term: string | null } | null }) {
-  const connected = portal !== null && portal.meetings > 0;
-
-  return (
-    <div class="crow portal">
-      <span class="cdot" />
-      <div class="main">
-        <span class="name">Class schedule</span>
-        <div class="meta">
-          {connected ? (
-            <>
-              <span class="flag new">{portal.meetings} sections</span>
-              {portal.term !== null && <span class="kind">{portal.term}</span>}
-            </>
-          ) : (
-            <span class="kind">Not linked yet</span>
-          )}
-        </div>
-        <div class="note">
-          {connected
-            ? 'Lab and tutorial times are known, so syllabus work tied to them can be dated.'
-            : 'Open Portal, go to Academics, and view your class schedule once. The events calendar is the default page and has no timetable on it.'}
-        </div>
-        {!connected && (
-          <a class="portalbtn" href="https://portal.uwaterloo.ca/" target="_blank" rel="noreferrer">
-            Open Portal
-          </a>
-        )}
-      </div>
     </div>
   );
 }
@@ -931,66 +888,3 @@ const isWorthShowing = (course: Course | undefined, withItems: ReadonlySet<strin
   return course.looksAcademic || withItems.has(course.id);
 };
 
-// --- announcements ---------------------------------------------------------
-
-type NewsProps = {
-  posts: readonly Announcement[];
-  seen: ReadonlySet<string>;
-  courses: ReadonlyMap<string, Course>;
-  now: number;
-};
-
-/**
- * What instructors have posted, newest first.
- *
- * No checkbox and no due date: an announcement is something to read, and
- * giving it the shape of a task would put it in competition with real
- * deadlines for the same attention.
- */
-function News({ posts, seen, courses, now }: NewsProps) {
-  if (posts.length === 0) {
-    return (
-      <Empty copy={{ line: 'No announcements yet.', sub: 'New posts from your courses land here.' }} />
-    );
-  }
-
-  return (
-    <div class="section" style="padding-top:8px">
-      {posts.map((post) => {
-        const course = courses.get(post.courseId) ?? null;
-        const isNew = !seen.has(post.id);
-
-        return (
-          <a
-            class={isNew ? 'post new' : 'post'}
-            key={post.id}
-            href={post.url}
-            target="_top"
-            rel="noreferrer"
-            style={colorVars(post.courseId)}
-          >
-            <div class="posthead">
-              {course !== null && (
-                <span class="course">{shortCourseLabel(course.code, course.name)}</span>
-              )}
-              {isNew && <span class="flag new">new</span>}
-              <span class="postwhen">{formatPosted(post.postedAt, now)}</span>
-            </div>
-            <div class="posttitle">{post.title}</div>
-            {post.summary !== '' && <div class="postbody">{post.summary}</div>}
-            <span class="postgo">Open in LEARN</span>
-          </a>
-        );
-      })}
-    </div>
-  );
-}
-
-const formatPosted = (at: number | null, now: number): string => {
-  if (at === null) return '';
-  const days = Math.round((now - at) / 86_400_000);
-  if (days <= 0) return 'today';
-  if (days === 1) return 'yesterday';
-  if (days < 7) return `${days} days ago`;
-  return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-};

@@ -1,21 +1,18 @@
 {
   "manifest_version": 3,
   "name": "LEARN Tracker",
-  "version": "0.2.0",
-  "description": "All your UW LEARN assignments, quizzes and deadlines in one place. Not affiliated with the University of Waterloo.",
+  "version": "0.3.0",
+  "description": "Your UW LEARN deadlines, exams, marks and announcements in one place. Not affiliated with the University of Waterloo.",
   "minimum_chrome_version": "120",
   "permissions": [
     "storage",
     "alarms",
     "notifications",
     "offscreen",
-    "idle",
-    "scripting"
+    "idle"
   ],
   "host_permissions": [
     "https://learn.uwaterloo.ca/*",
-    "https://quest.pecs.uwaterloo.ca/*",
-    "https://portal.uwaterloo.ca/*",
     "https://outline.uwaterloo.ca/*"
   ],
   "background": {
@@ -32,17 +29,6 @@
       ],
       "run_at": "document_idle",
       "all_frames": false
-    },
-    {
-      "matches": [
-        "https://quest.pecs.uwaterloo.ca/*",
-        "https://portal.uwaterloo.ca/*"
-      ],
-      "js": [
-        "portal.js"
-      ],
-      "run_at": "document_idle",
-      "all_frames": true
     }
   ],
   "action": {

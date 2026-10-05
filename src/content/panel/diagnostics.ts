@@ -1,34 +1,28 @@
 /**
  * A single block of text describing everything the extension currently knows.
  *
- * Exists because "it did not work" covers at least five different failures
- * that look identical from outside: the sync never ran, the session expired,
- * no syllabus was found, one was found but could not be read, or it was read
- * and contained nothing datable. Guessing between them wastes far more time
- * than printing the answer.
- *
- * The Portal text sample is included deliberately. When the schedule parse
- * finds nothing, that sample is the only thing that shows what the page
- * actually looked like.
+ * Exists because "it did not work" covers several different failures that
+ * look identical from outside: the sync never ran, the session expired, an
+ * endpoint was refused, no syllabus was found, or one was read and named no
+ * dated exam. Guessing between them wastes far more time than printing the
+ * answer.
  */
 
 import type { Course, CourseHealth, SyncState, TaskItem } from '@core/types';
-import type { StoredPortalCapture } from '@storage/store';
+import type { StoredMarks } from '@storage/store';
 
 export interface DiagnosticsInput {
   readonly items: readonly TaskItem[];
   readonly courses: readonly Course[];
   readonly health: readonly CourseHealth[];
+  readonly marks: ReadonlyMap<string, StoredMarks>;
   readonly syncState: SyncState | null;
-  readonly portal: StoredPortalCapture | null;
   readonly grantedHosts: readonly string[];
   readonly now: number;
 }
 
-const SAMPLE_CHARS = 1500;
-
 export const buildDiagnostics = (input: DiagnosticsInput): string => {
-  const { items, courses, health, syncState, portal, grantedHosts, now } = input;
+  const { items, courses, health, marks, syncState, grantedHosts, now } = input;
   const healthById = new Map(health.map((h) => [h.courseId, h]));
   const out: string[] = [];
 
@@ -37,7 +31,7 @@ export const buildDiagnostics = (input: DiagnosticsInput): string => {
   out.push('');
 
   out.push('HOST ACCESS');
-  for (const host of REQUIRED_HOSTS) {
+  for (const host of HOSTS) {
     const granted = grantedHosts.some((g) => g.includes(host.match));
     out.push(`  ${granted ? Y : N} ${host.label}`);
   }
@@ -55,67 +49,26 @@ export const buildDiagnostics = (input: DiagnosticsInput): string => {
   for (const course of courses) {
     const h = healthById.get(course.id);
     const mine = items.filter((i) => i.courseId === course.id);
-    const fromSyllabus = mine.filter((i) => i.sources.some((s) => s.system === 'syllabus')).length;
+    const m = marks.get(course.id);
 
     out.push(`  ${course.code || course.name} [${course.id}]${course.looksAcademic ? '' : ' (not a course)'}`);
-    out.push(`      items: ${mine.length}, from syllabus: ${fromSyllabus}`);
+    out.push(
+      `      items: ${mine.length}, calendar exams: ${countSource(mine, 'calendar')}, syllabus exams: ${countSource(mine, 'syllabus')}`,
+    );
+    out.push(
+      `      marks: ${m?.grades.length ?? 0}, course grade: ${m?.courseGrade?.displayed ?? 'not shown'}`,
+    );
+    // "Could not load: calendar" here means both calendar request shapes were refused.
     if (h?.lastError != null && h.lastError !== '') out.push(`      error: ${h.lastError}`);
     if (h?.syllabusNote != null && h.syllabusNote !== '') out.push(`      syllabus: ${h.syllabusNote}`);
     if (h === undefined) out.push('      no health record, this course never synced');
   }
   out.push('');
 
-  out.push('PORTAL');
-  if (portal === null) {
-    out.push('  never captured, the Portal page has not been visited since installing');
-  } else {
-    out.push(`  captured:  ${stamp(portal.schedule.capturedAt)}`);
-    out.push(`  url:       ${portal.url}`);
-    out.push(`  term:      ${portal.schedule.termLabel ?? 'not found'}`);
-    out.push(`  sections:  ${portal.schedule.meetings.length} (weekly pattern)`);
-    out.push(`  sessions:  ${portal.events?.length ?? 0} (real dated events)`);
-    out.push(`  saw text:  ${String(portal.sawText)}`);
-    out.push('');
-    const sessions = (portal.events ?? []) as readonly {
-      title?: unknown;
-      courseCode?: unknown;
-      kind?: unknown;
-      startsAt?: unknown;
-    }[];
-
-    if (sessions.length > 0) {
-      out.push('');
-      out.push('  dated sessions found:');
-      for (const e of sessions.slice(0, 20)) {
-        const when = typeof e.startsAt === 'number' ? new Date(e.startsAt).toLocaleString() : '?';
-        const course = typeof e.courseCode === 'string' ? e.courseCode : 'no course';
-        const kind = typeof e.kind === 'string' ? e.kind : 'no type';
-        const title = typeof e.title === 'string' ? e.title : '';
-        out.push(`    ${when}  [${course} / ${kind}]  ${title}`);
-      }
-      if (sessions.length > 20) out.push(`    ... and ${sessions.length - 20} more`);
-
-      out.push('');
-      out.push('  courses named by the schedule:');
-      const named = new Set(
-        sessions
-          .map((e) => (typeof e.courseCode === 'string' ? e.courseCode : ''))
-          .filter((c) => c !== ''),
-      );
-      out.push(`    ${[...named].join(', ') || 'none'}`);
-      out.push('  courses named by LEARN:');
-      out.push(`    ${courses.map((c) => c.code || c.name).join(', ')}`);
-    }
-
-    out.push('  --- text the page showed, first 1500 characters ---');
-    out.push(indent(portal.sample.slice(0, SAMPLE_CHARS)));
-    out.push('  --- end ---');
-  }
-  out.push('');
-
   out.push('ITEMS BY SOURCE');
   out.push(`  dropbox:  ${countSource(items, 'dropbox')}`);
   out.push(`  quiz:     ${countSource(items, 'quiz')}`);
+  out.push(`  calendar: ${countSource(items, 'calendar')}`);
   out.push(`  syllabus: ${countSource(items, 'syllabus')}`);
   out.push(`  total:    ${items.length}`);
 
@@ -133,10 +86,8 @@ const N = "WITHHELD ";
  * "Failed to fetch" and a declared content script never injects. Both read as
  * the site being broken, which is why this is the first thing reported.
  */
-const REQUIRED_HOSTS = [
-  { match: 'learn.uwaterloo.ca', label: 'LEARN, for assignments' },
-  { match: 'quest.pecs.uwaterloo.ca', label: 'Quest, for lab and tutorial dates' },
-  { match: 'portal.uwaterloo.ca', label: 'Portal, an alternative schedule source' },
+const HOSTS = [
+  { match: 'learn.uwaterloo.ca', label: 'LEARN, for everything' },
   { match: 'outline.uwaterloo.ca', label: 'Course outlines kept outside LEARN' },
 ] as const;
 
@@ -155,9 +106,3 @@ const findDuplicateIds = (items: readonly TaskItem[]): readonly string[] => {
 
 const stamp = (at: number | null): string =>
   at === null ? 'never' : new Date(at).toLocaleString();
-
-const indent = (text: string): string =>
-  text
-    .split('\n')
-    .map((l) => `    ${l}`)
-    .join('\n');
