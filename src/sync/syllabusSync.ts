@@ -12,9 +12,9 @@
 import { type Result, ok } from '@shared/result';
 import type { AppError } from '@shared/errors';
 import { flattenToc, pickSyllabusTopics } from '@core/syllabus/discover';
-import { extractExams } from '@core/syllabus/extract';
+import { extractAssessments } from '@core/syllabus/extract';
 import { termFrom } from '@core/syllabus/dates';
-import { candidatesToItems, dropDuplicatesOfLearn } from '@core/syllabus/toItems';
+import { candidatesToItems, dropDuplicatesOfLearn, type SourceDoc } from '@core/syllabus/toItems';
 import { LEARN_ORIGIN } from '@shared/constants';
 import type { Course, TaskItem } from '@core/types';
 import type { Fetcher } from './fetchProxy';
@@ -41,17 +41,33 @@ export const syncSyllabus = async (
 ): Promise<Result<SyllabusOutcome, AppError>> => {
   const empty = { items: [], docsFound: 0, docsRead: 0, note: null } as const;
 
-  const toc = await fetcher.getJson(`/d2l/api/le/${le}/${course.id}/content/toc`);
-  if (!toc.ok) return ok({ ...empty, note: "Could not read the course content list." });
+  const overview = await readOverview(fetcher, course.id, le);
 
-  const topics = flattenToc(toc.value.json, LEARN_ORIGIN, course.id);
-  const picked = pickSyllabusTopics(topics, now);
-  if (picked.length === 0) return ok({ ...empty, note: "No syllabus found in this course." });
+  const toc = await fetcher.getJson(`/d2l/api/le/${le}/${course.id}/content/toc`);
+  const picked = toc.ok
+    ? pickSyllabusTopics(flattenToc(toc.value.json, LEARN_ORIGIN, course.id), now)
+    : [];
+
+  if (picked.length === 0 && overview.length === 0) {
+    return ok({
+      ...empty,
+      note: toc.ok ? "No syllabus found in this course." : "Could not read the course content list.",
+    });
+  }
 
   const term = termFrom(null, now);
   const collected: TaskItem[] = [];
   const problems: string[] = [];
   let read = 0;
+
+  const take = (lines: readonly string[], doc: SourceDoc): void => {
+    read += 1;
+    collected.push(
+      ...candidatesToItems(extractAssessments(lines, term), course.id, doc, now),
+    );
+  };
+
+  for (const part of overview) take(part.lines, part.doc);
 
   for (const topic of picked) {
     const lines = await readDocument(fetcher, topic.url, topic.typeIdentifier, topic.title);
@@ -62,35 +78,72 @@ export const syncSyllabus = async (
     }
     if (lines.value.length === 0) continue;
 
-    read += 1;
-    const candidates = extractExams(lines.value, term);
-
-    collected.push(
-      ...candidatesToItems(
-        candidates,
-        course.id,
-        { topicId: topic.id, title: topic.title, url: topic.url },
-        now,
-      ),
-    );
+    take(lines.value, { topicId: topic.id, title: topic.title, url: topic.url });
   }
 
   const items = dropDuplicatesOfLearn(collected, learnItems);
 
   return ok({
     items,
-    docsFound: picked.length,
+    docsFound: picked.length + overview.length,
     docsRead: read,
     note:
       problems.length > 0
         ? problems.join(SEP)
         : read > 0 && items.length === 0
-          ? "Syllabus read. No midterm or exam had a date written beside it."
+          ? "Syllabus read. No assessment had a date written beside it."
           : null,
   });
 };
 
 const SEP = "; ";
+
+interface OverviewPart {
+  readonly lines: readonly string[];
+  readonly doc: SourceDoc;
+}
+
+/**
+ * The course's Overview page, which many instructors use instead of a
+ * content-tree outline: its text, plus the file attached to it if any.
+ *
+ * Best effort. A course with no overview, or one this account cannot read,
+ * yields nothing rather than a problem note, since most courses leave it
+ * empty.
+ */
+const readOverview = async (
+  fetcher: Fetcher,
+  courseId: string,
+  le: string,
+): Promise<readonly OverviewPart[]> => {
+  const res = await fetcher.getJson(`/d2l/api/le/${le}/${courseId}/overview`);
+  if (!res.ok) return [];
+
+  const json = res.value.json as Record<string, unknown> | null;
+  const desc = (json?.['Description'] ?? null) as Record<string, unknown> | null;
+  const html = typeof desc?.['Html'] === 'string' ? desc['Html'] : '';
+  const text = typeof desc?.['Text'] === 'string' ? desc['Text'] : '';
+  const pageUrl = `${LEARN_ORIGIN}/d2l/home/${courseId}`;
+
+  const parts: OverviewPart[] = [];
+  const lines = toLines(html !== '' ? html : text);
+  if (lines.length > 0) {
+    parts.push({ lines, doc: { topicId: 'overview', title: 'Course Overview', url: pageUrl } });
+  }
+
+  if (json?.['HasAttachment'] === true) {
+    const url = `${LEARN_ORIGIN}/d2l/api/le/${le}/${courseId}/overview/attachment`;
+    const file = await readDocument(fetcher, url, 'File', 'Course Overview attachment');
+    if (file.error === null && file.value.length > 0) {
+      parts.push({
+        lines: file.value,
+        doc: { topicId: 'overview-file', title: 'Course Overview attachment', url: pageUrl },
+      });
+    }
+  }
+
+  return parts;
+};
 
 /**
  * Reads one document, deciding how by looking at it rather than at its name.

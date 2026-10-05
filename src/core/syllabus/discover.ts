@@ -22,7 +22,7 @@ export interface ScoredTopic extends TocTopic {
 export const SYLLABUS_THRESHOLD = 3;
 
 /** How many documents to read per course, best first. */
-export const MAX_DOCS_PER_COURSE = 3;
+export const MAX_DOCS_PER_COURSE = 5;
 
 export const scoreTopic = (topic: TocTopic, now: number): number => {
   const t = topic.title.toLowerCase();

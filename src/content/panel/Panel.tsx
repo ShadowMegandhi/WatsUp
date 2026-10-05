@@ -302,7 +302,17 @@ export const Panel = () => {
         </div>
       )}
 
-      <nav class="tabs" role="tablist">
+      <nav
+        class="tabs"
+        role="tablist"
+        // The row scrolls sideways; a plain mouse wheel should move it too.
+        onWheel={(e) => {
+          const row = e.currentTarget;
+          if (e.deltaY === 0 || row.scrollWidth <= row.clientWidth) return;
+          row.scrollLeft += e.deltaY;
+          e.preventDefault();
+        }}
+      >
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -310,7 +320,8 @@ export const Panel = () => {
             role="tab"
             class={tab === t.id ? 'tab on' : 'tab'}
             aria-selected={tab === t.id}
-            onClick={() => {
+            onClick={(e) => {
+              e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
               if (tab === 'marks' && t.id !== 'marks') void markGradesSeen();
               setTab(t.id);
               if (t.id === 'news') void markNewsRead();
@@ -805,7 +816,7 @@ function Courses({ courses, health, items, diagnostics }: CoursesProps) {
                 </span>
                 {fromSyllabus > 0 && (
                   <span class="flag syllabus">
-                    {fromSyllabus} exam {fromSyllabus === 1 ? 'date' : 'dates'} from syllabus
+                    {fromSyllabus} {fromSyllabus === 1 ? 'date' : 'dates'} from syllabus
                   </span>
                 )}
               </div>

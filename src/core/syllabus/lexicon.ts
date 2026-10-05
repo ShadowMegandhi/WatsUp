@@ -8,27 +8,57 @@
  * weekly schedule table most dated rows are lecture topics, not assessments,
  * so a date alone is never enough.
  *
- * Since v0.3 the syllabus is read for one thing only: midterms and exams
- * with a date written on the same line. Assignments, quizzes and labs come
- * from LEARN itself, where they are facts rather than readings.
+ * Since v0.4 the syllabus is read for any named assessment with a date
+ * written on the same line: exams, tests, quizzes, assignments, labs,
+ * projects. Anything LEARN also reports is dropped in favour of LEARN's copy.
  */
 
-/** Names an exam. Required for a row to be considered at all. */
-export const EXAM_TERMS: readonly string[] = [
-  'midterm',
-  'mid-term',
-  'term test',
-  'final exam',
-  'final examination',
-  'exam',
+import type { TaskKind } from '../types';
+
+export interface AssessmentTerm {
+  readonly term: string;
+  readonly kind: TaskKind;
+}
+
+/**
+ * Names an assessment. Required for a row to be considered at all.
+ *
+ * Singular, whole words only: "quizzes are weekly" describes a policy, while
+ * "Quiz 3" names one quiz. Multi-word names win over the words inside them.
+ */
+export const ASSESSMENT_TERMS: readonly AssessmentTerm[] = [
+  { term: 'final examination', kind: 'exam' },
+  { term: 'final exam', kind: 'exam' },
+  { term: 'midterm', kind: 'exam' },
+  { term: 'mid-term', kind: 'exam' },
+  { term: 'lab exam', kind: 'exam' },
+  { term: 'exam', kind: 'exam' },
+  { term: 'term test', kind: 'test' },
+  { term: 'tutorial test', kind: 'test' },
+  { term: 'test', kind: 'test' },
+  { term: 'lab quiz', kind: 'quiz' },
+  { term: 'tutorial quiz', kind: 'quiz' },
+  { term: 'quiz', kind: 'quiz' },
+  { term: 'assignment', kind: 'assignment' },
+  { term: 'problem set', kind: 'assignment' },
+  { term: 'homework', kind: 'assignment' },
+  { term: 'essay', kind: 'assignment' },
+  { term: 'reflection', kind: 'assignment' },
+  { term: 'lab report', kind: 'lab' },
+  { term: 'lab', kind: 'lab' },
+  { term: 'project', kind: 'project' },
+  { term: 'proposal', kind: 'project' },
+  { term: 'presentation', kind: 'project' },
+  { term: 'report', kind: 'project' },
+  { term: 'deliverable', kind: 'project' },
+  { term: 'milestone', kind: 'project' },
 ];
 
 /**
- * Rows that name an exam but do not date one. Each is a real pattern:
- * a window rather than a day, a date the registrar has not set yet, or a
- * tutorial or lab component that is not the exam itself.
+ * Rows that name an assessment but do not date one. Each is a real pattern:
+ * a window rather than a day, or a date the registrar has not set yet.
  */
-export const EXAM_VETO_TERMS: readonly string[] = [
+export const WINDOW_TERMS: readonly string[] = [
   'exam period',
   'examination period',
   'exam schedule',
@@ -40,11 +70,23 @@ export const EXAM_VETO_TERMS: readonly string[] = [
   'tbd',
   'to be announced',
   'to be determined',
-  'tutorial',
-  'lab',
-  'quiz',
   'conflict',
   'deferred',
+];
+
+/**
+ * The date on the row is when something is handed out or returned, not when
+ * it is due. "Assignment 3 released Oct 2" is not a deadline.
+ */
+export const NOT_A_DEADLINE_TERMS: readonly string[] = [
+  'released',
+  'release',
+  'posted',
+  'handed out',
+  'returned',
+  'solutions',
+  'solution',
+  'marks back',
 ];
 
 /**
@@ -167,4 +209,4 @@ export const REVIEW_PREFIXES: readonly string[] = [
  * documents already cached on an existing install. Forgetting this is why a
  * heuristics fix can appear to do nothing.
  */
-export const LEXICON_VERSION = 2;
+export const LEXICON_VERSION = 3;

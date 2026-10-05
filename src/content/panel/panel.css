@@ -85,17 +85,28 @@
 .iconbtn.spin { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/*
+ * Seven tabs do not fit 468px, so the row scrolls sideways. The scrollbar is
+ * kept visible (thin) so it is obvious there is more past the edge.
+ */
 .tabs {
   display: flex; gap: 2px;
   padding: 8px 10px 0;
   background: var(--raise);
   border-bottom: 1px solid var(--rule);
   flex: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--faint) transparent;
 }
+.tabs::-webkit-scrollbar { height: 6px; }
+.tabs::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 999px; }
+.tabs::-webkit-scrollbar-track { background: transparent; }
 
 .tab {
   all: unset;
-  flex: 1;
+  flex: 1 0 auto;
   display: flex; align-items: center; justify-content: center; gap: 6px;
   padding: 7px 8px 9px;
   cursor: pointer;

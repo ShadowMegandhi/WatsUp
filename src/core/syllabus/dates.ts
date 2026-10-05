@@ -208,7 +208,7 @@ export const findDate = (rawLine: string, term: TermContext): FoundDate | null =
     };
   }
 
-  for (const m of eachMatch(/\b(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})\b/i, line)) {
+  for (const m of eachMatch(/\b(\d{1,2})(?:st|nd|rd|th)?(?:\s+|-)([a-z]{3,9})\b/i, line)) {
     const month = MONTHS[(m[2] ?? '').toLowerCase()];
     const d = Number(m[1]);
     if (month === undefined) continue;

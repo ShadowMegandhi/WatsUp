@@ -39,8 +39,8 @@ export const candidatesToItems = (
       id: syllabusId(courseId, c.title),
       courseId,
       title: c.title,
-      // The reader only accepts exams, so the kind is known rather than inferred.
-      kind: 'exam',
+      // Fixed by the assessment name the line matched, not inferred.
+      kind: c.kind,
       dueAt: c.dueAt,
       availableFrom: null,
       endsAt: null,
