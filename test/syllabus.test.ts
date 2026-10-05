@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { findDate, inferYear, termFrom, withinTerm, maskNonDates } from '@core/syllabus/dates';
-import { extractAssessments, readAssessmentLine, readLine, readWeight, buildTitle } from '@core/syllabus/extract';
+import { extractAssessments, readAssessmentLine, readLine, readTime, readWeight, buildTitle } from '@core/syllabus/extract';
 import { toLines } from '@sync/syllabusSync';
 
 /** Fall 2026: starts September, runs into December. */
@@ -393,5 +393,47 @@ describe('outline-site page layout', () => {
 
   it('keeps plain text line breaks', () => {
     expect(toLines('Quiz 1 Oct 2\nQuiz 2 Oct 9')).toEqual(['Quiz 1 Oct 2', 'Quiz 2 Oct 9']);
+  });
+});
+
+describe('a schedule row with a week span and a dated note', () => {
+  // Shaped like the ENGR 121 Fall 2026 weekly schedule.
+  const row =
+    '| 9 | | Nov 2 - 6 | | 8. Arrays & Structs | | 10.1, Chapters 7 | | Midterm Exam: Monday November 2 at 5:00pm in RCH 100 and RCH 100 Lab 6: functions |';
+
+  it('reads the midterm from its own note, with its time', () => {
+    const found = readLine(row, FALL);
+    expect(found.map((c) => c.title)).toEqual(['Midterm']);
+    const due = new Date(found[0]?.dueAt ?? 0);
+    expect([due.getMonth() + 1, due.getDate(), due.getHours(), due.getMinutes()]).toEqual([11, 2, 17, 0]);
+    expect(found[0]?.hasTime).toBe(true);
+  });
+
+  it('does not give the undated lab in the same cell the midterm date', () => {
+    expect(readLine(row, FALL).some((c) => c.kind === 'lab')).toBe(false);
+  });
+
+  it('still refuses a row whose only dates are the week span', () => {
+    expect(readLine('| 8 | | Oct 26 - 30 | | Lab 5: Loops & Decisions |', FALL)).toEqual([]);
+  });
+});
+
+describe('readTime', () => {
+  it('reads a time written after the date', () => {
+    expect(readTime('Midterm Monday November 2 at 5:00pm', 'November 2')).toEqual({ h: 17, m: 0 });
+    expect(readTime('Midterm Oct 23, 7 pm', 'Oct 23')).toEqual({ h: 19, m: 0 });
+    expect(readTime('Quiz Oct 23 9:30 a.m.', 'Oct 23')).toEqual({ h: 9, m: 30 });
+  });
+
+  it('refuses a time span rather than picking an end', () => {
+    expect(readTime('Lab 3 Oct 6 2:30-4:20pm', 'Oct 6')).toBeNull();
+  });
+
+  it('needs am or pm', () => {
+    expect(readTime('Midterm Oct 23 in room 10', 'Oct 23')).toBeNull();
+  });
+
+  it('leaves an untimed date all-day', () => {
+    expect(readLine('Quiz 1 - Sept 30 - 5%', FALL)[0]?.hasTime).toBe(false);
   });
 });

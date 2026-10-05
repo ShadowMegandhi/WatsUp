@@ -211,4 +211,4 @@ export const REVIEW_PREFIXES: readonly string[] = [
  * documents already cached on an existing install. Forgetting this is why a
  * heuristics fix can appear to do nothing.
  */
-export const LEXICON_VERSION = 5;
+export const LEXICON_VERSION = 6;

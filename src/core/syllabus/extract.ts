@@ -43,6 +43,8 @@ export interface Candidate {
   readonly kind: TaskKind;
   readonly date: CivilDate;
   readonly dueAt: number;
+  /** A clock time was written with the date; otherwise it is all-day. */
+  readonly hasTime: boolean;
   readonly weightPct: number | null;
   readonly sourceLine: string;
   readonly matchedTerm: string;
@@ -87,22 +89,94 @@ export const readLine = (raw: string, term: TermContext): readonly Candidate[] =
   if (mentions.length === 0) return [];
 
   const found = pickDate(line, term);
-  if (found === null) return [];
+  if (found === null) return readEachMention(line, mentions, term);
 
   // With several assessments on one line, a single percentage could belong
   // to any of them, so it is attached only when there is one.
   const weight = mentions.length === 1 ? readWeight(line) : null;
+  const time = mentions.length === 1 ? readTime(line, found.matched) : null;
 
   return mentions.map((m) => ({
     title: buildTitle(line, m.term, found.matched),
     kind: m.kind,
     date: found.date,
-    // Shown as all-day. 23:59 keeps it sorting last on its day.
-    dueAt: toInstant(found.date, 23, 59),
+    // Without a stated time it is shown as all-day; 23:59 keeps it sorting
+    // last on its day.
+    dueAt: toInstant(found.date, time?.h ?? 23, time?.m ?? 59),
+    hasTime: time !== null,
     weightPct: weight,
     sourceLine: line,
     matchedTerm: m.term,
   }));
+};
+
+/**
+ * The fallback when a whole line is ambiguous: read each assessment with
+ * only the text that follows its own name, up to the next name or the end
+ * of its table cell.
+ *
+ * A weekly schedule row carries the week's span ("Nov 2 - 6") as well as
+ * the note "Midterm Exam: Monday November 2 at 5:00pm", so the line as a
+ * whole has two dates and is rightly refused. The midterm's own words name
+ * exactly one, though, and reading that is not a guess. A mention whose own
+ * text has no date ("Lab 6: functions") still yields nothing.
+ */
+const readEachMention = (
+  line: string,
+  mentions: readonly Mention[],
+  term: TermContext,
+): readonly Candidate[] => {
+  const out: Candidate[] = [];
+
+  mentions.forEach((m, i) => {
+    const nextMention = mentions[i + 1]?.at ?? line.length;
+    const cellEnd = line.indexOf('|', m.at);
+    const end = Math.min(nextMention, cellEnd < 0 ? line.length : cellEnd);
+    const own = line.slice(m.at, end);
+
+    const found = pickDate(own, term);
+    if (found === null) return;
+
+    const time = readTime(own, found.matched);
+    out.push({
+      title: buildTitle(own, m.term, found.matched),
+      kind: m.kind,
+      date: found.date,
+      dueAt: toInstant(found.date, time?.h ?? 23, time?.m ?? 59),
+      hasTime: time !== null,
+      weightPct: readWeight(own),
+      sourceLine: line,
+      matchedTerm: m.term,
+    });
+  });
+
+  return out;
+};
+
+/**
+ * A clock time written just after the date ("November 2 at 5:00pm",
+ * "Oct 23, 7 pm"). Needs am/pm, so a bare "10.1" or a room number is never
+ * read as a time, and a span ("2:30-4:20pm") is refused rather than picking
+ * an end.
+ */
+export const readTime = (text: string, dateText: string): { h: number; m: number } | null => {
+  const at = text.indexOf(dateText);
+  if (at < 0) return null;
+  const after = text.slice(at + dateText.length, at + dateText.length + 30);
+
+  const m = /^[^|]*?\b(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\.?(?![a-z])/i.exec(after);
+  if (m === null) return null;
+
+  const before = after.slice(0, m.index + m[0].indexOf(m[1] ?? ''));
+  if (/(?:-|–|—|\bto)\s*$/i.test(before) || /\d\s*(?:-|–|—)\s*$/.test(before)) return null;
+  if (/\d(?::\d{2})?\s*(?:-|–|—)\s*\d/.test(after.slice(0, m.index + m[0].length))) return null;
+
+  const hour = Number(m[1]);
+  const minute = m[2] === undefined ? 0 : Number(m[2]);
+  if (hour < 1 || hour > 12 || minute > 59) return null;
+
+  const pm = (m[3] ?? '').toLowerCase() === 'p';
+  return { h: (hour % 12) + (pm ? 12 : 0), m: minute };
 };
 
 /**

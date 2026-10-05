@@ -44,7 +44,7 @@ export const candidatesToItems = (
       dueAt: c.dueAt,
       availableFrom: null,
       endsAt: null,
-      isAllDay: true,
+      isAllDay: !c.hasTime,
       weightPct: c.weightPct,
       url: doc.url,
       sources: [source],
