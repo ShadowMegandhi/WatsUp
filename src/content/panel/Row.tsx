@@ -8,7 +8,7 @@
  * be found at a glance without reading.
  */
 
-import { useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { shortCourseLabel } from '@core/courseColor';
 import type { Course, ResolvedTask } from '@core/types';
 import { colorVars } from './courseStyle';
@@ -109,6 +109,22 @@ type FilterProps = {
  */
 export function CourseFilter({ courses, selected, onSelect }: FilterProps) {
   const [open, setOpen] = useState(false);
+  const [edges, setEdges] = useState({ left: false, right: false });
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  // Which way the row can still scroll, so the arrows only show when useful.
+  const measure = useCallback(() => {
+    const row = rowRef.current;
+    if (row === null) return;
+    const left = row.scrollLeft > 2;
+    const right = row.scrollLeft + row.clientWidth < row.scrollWidth - 2;
+    setEdges((e) => (e.left === left && e.right === right ? e : { left, right }));
+  }, []);
+
+  useEffect(() => {
+    measure();
+  }, [measure, courses.length, open, selected]);
+
   if (courses.length < 2) return null;
 
   const ordered =
@@ -116,12 +132,23 @@ export function CourseFilter({ courses, selected, onSelect }: FilterProps) {
       ? courses
       : [...courses.filter((c) => c.id === selected), ...courses.filter((c) => c.id !== selected)];
 
+  const nudge = (dir: 1 | -1) => {
+    rowRef.current?.scrollBy({ left: dir * 160, behavior: 'smooth' });
+  };
+
   return (
     <div class={open ? 'filterbar open' : 'filterbar'}>
+      {!open && edges.left && (
+        <button type="button" class="farrow" aria-label="Scroll courses left" onClick={() => nudge(-1)}>
+          &#8249;
+        </button>
+      )}
       <div
-        class="filters"
+        ref={rowRef}
+        class={`filters${edges.left && !open ? ' fadeleft' : ''}${edges.right && !open ? ' faderight' : ''}`}
         role="toolbar"
         aria-label="Show one course"
+        onScroll={measure}
         onWheel={(e) => {
           const row = e.currentTarget;
           if (open || e.deltaY === 0 || row.scrollWidth <= row.clientWidth) return;
@@ -152,6 +179,11 @@ export function CourseFilter({ courses, selected, onSelect }: FilterProps) {
           </button>
         ))}
       </div>
+      {!open && edges.right && (
+        <button type="button" class="farrow" aria-label="Scroll courses right" onClick={() => nudge(1)}>
+          &#8250;
+        </button>
+      )}
       <button
         type="button"
         class="fmore"

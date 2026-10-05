@@ -96,8 +96,8 @@ export function CalendarView({
             {dayTasks.length === 0 ? (
               <p class="hint">Nothing due this day.</p>
             ) : (
-              dayTasks.map((t) => (
-                <Row key={t.item.id} task={t} isNew={newIds.has(t.item.id)} now={now} onToggle={onToggle} />
+              dayTasks.map((t, i) => (
+                <Row key={`${t.item.id}#${i}`} task={t} isNew={newIds.has(t.item.id)} now={now} onToggle={onToggle} />
               ))
             )}
           </>
@@ -139,9 +139,9 @@ function Day({ cell, tasks, selected, onSelect }: DayProps) {
       <span class="dnum">{cell.dayOfMonth}</span>
       {list.length > 0 && (
         <span class="dots">
-          {shown.map((t) => (
+          {shown.map((t, i) => (
             <span
-              key={t.item.id}
+              key={`${t.item.id}#${i}`}
               class={
                 t.status === 'completed' ? 'dot done' : t.status === 'overdue' ? 'dot late' : 'dot'
               }

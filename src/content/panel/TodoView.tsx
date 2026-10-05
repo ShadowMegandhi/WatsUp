@@ -41,8 +41,11 @@ export function TodoView({
     ? { line: 'Nothing matches that search.', sub: null }
     : { line: "You're all caught up.", sub: 'New work from LEARN and your outlines shows up here.' };
 
-  const row = (t: ResolvedTask) => (
-    <Row key={t.item.id} task={t} isNew={newIds.has(t.item.id)} now={now} onToggle={onToggle} />
+  // Keyed by position as well as id: two records can share an id (one
+  // assignment listed in two LEARN tools), and a duplicate key makes Preact
+  // drop one of them from the list without a word.
+  const row = (t: ResolvedTask, i: number) => (
+    <Row key={`${t.item.id}#${i}`} task={t} isNew={newIds.has(t.item.id)} now={now} onToggle={onToggle} />
   );
 
   return (
@@ -97,9 +100,9 @@ function NextUp({ tasks, now }: { tasks: readonly ResolvedTask[]; now: number })
         {!first.item.isAllDay && <span class="ncount">{countdown(due, now)}</span>}
         {tasks.length > 1 && <span class="nnum">{tasks.length} due</span>}
       </div>
-      {tasks.map((t) => (
+      {tasks.map((t, i) => (
         <a
-          key={t.item.id}
+          key={`${t.item.id}#${i}`}
           class="nitem"
           href={t.item.url}
           target="_top"
