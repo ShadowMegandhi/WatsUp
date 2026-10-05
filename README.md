@@ -1,4 +1,4 @@
-# WatsUp
+# WatsUp (LEARN Tracker)
 
 *What's up at Waterloo.* A Chrome extension that pulls every assignment, quiz,
 exam, returned mark and announcement across your University of Waterloo LEARN
