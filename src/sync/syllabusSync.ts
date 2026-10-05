@@ -244,10 +244,14 @@ const fetchText = async (fetcher: Fetcher, url: string): Promise<string | null> 
  * that.
  */
 export const toLines = (text: string): readonly string[] =>
-  text
+  (LOOKS_LIKE_HTML.test(text) ? text.replace(WHITESPACE, " ") : text)
     .replace(SCRIPT_BLOCK, " ")
     .replace(STYLE_BLOCK, " ")
     .replace(COMMENT_BLOCK, " ")
+    // A row stays one line even when its cells hold paragraphs or breaks.
+    // The outline site wraps every cell in <p>, which used to put the date
+    // and the quiz it belongs to on separate lines.
+    .replace(TABLE_ROW, (row) => row.replace(BLOCK_INSIDE_ROW, " "))
     .replace(BLOCK_END, "\n")
     .replace(CELL_EDGE, " | ")
     .replace(ANY_TAG, " ")
@@ -256,6 +260,13 @@ export const toLines = (text: string): readonly string[] =>
     .split("\n")
     .map((l) => l.replace(WHITESPACE, " ").trim())
     .filter((l) => l.length > 0);
+/**
+ * In markup, source line breaks mean nothing; the outline site indents every
+ * cell across several lines. Plain text keeps its line breaks.
+ */
+const LOOKS_LIKE_HTML = /<\s*(?:html|body|div|p|table|tr|td|br|span|h[1-6])\b/i;
+const TABLE_ROW = /<tr[\s>][\s\S]*?<\/tr\s*>/gi;
+const BLOCK_INSIDE_ROW = /<\s*(br|\/p|\/div|\/li|\/h[1-6])\s*\/?>/gi;
 const SCRIPT_BLOCK = /<script[\s\S]*?<\/script>/gi;
 const STYLE_BLOCK = /<style[\s\S]*?<\/style>/gi;
 const COMMENT_BLOCK = /<!--[\s\S]*?-->/g;

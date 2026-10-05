@@ -44,6 +44,8 @@ export const ASSESSMENT_TERMS: readonly AssessmentTerm[] = [
   { term: 'homework', kind: 'assignment' },
   { term: 'essay', kind: 'assignment' },
   { term: 'reflection', kind: 'assignment' },
+  { term: 'tutorial activity', kind: 'assignment' },
+  { term: 'tutorial assignment', kind: 'assignment' },
   { term: 'lab report', kind: 'lab' },
   { term: 'lab', kind: 'lab' },
   { term: 'project', kind: 'project' },
@@ -209,4 +211,4 @@ export const REVIEW_PREFIXES: readonly string[] = [
  * documents already cached on an existing install. Forgetting this is why a
  * heuristics fix can appear to do nothing.
  */
-export const LEXICON_VERSION = 4;
+export const LEXICON_VERSION = 5;

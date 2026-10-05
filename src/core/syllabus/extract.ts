@@ -253,8 +253,18 @@ export const buildTitle = (line: string, term: string, dateText: string): string
   // usually the weight, and "Midterm 25" would be wrong.
   const rest = withoutDate.slice(at + term.length);
   const m = /^[ #:.-]{0,4}([0-9]{1,2})(?![0-9%])/.exec(rest);
+  if (m !== null) return base + ' ' + m[1];
 
-  return m === null ? base : base + ' ' + m[1];
+  // "Unit 1 - Quiz" numbers the unit, not the quiz, but it is still what
+  // tells this quiz from the others.
+  const before = withoutDate.slice(0, at);
+  const unit = /\b(unit|module|part|chapter|topic)\s*#?\s*([0-9]{1,2})\s*[-–—:|]?\s*$/i.exec(before);
+  if (unit !== null) {
+    const name = (unit[1] ?? '').charAt(0).toUpperCase() + (unit[1] ?? '').slice(1).toLowerCase();
+    return `${name} ${unit[2] ?? ''} ${base}`;
+  }
+
+  return base;
 };
 
 const dateKey = (d: CivilDate): string => `${d.y}-${d.m}-${d.d}`;
@@ -264,17 +274,39 @@ const dateKey = (d: CivilDate): string => `${d.y}-${d.m}-${d.d}`;
  * grading table and again in a schedule. The reading with a weight wins.
  */
 const dedupe = (items: readonly Candidate[]): readonly Candidate[] => {
-  const best = new Map<string, Candidate>();
+  const kept: Candidate[] = [];
 
   for (const c of items) {
-    const key = `${c.title.toLowerCase()}|${dateKey(c.date)}`;
-    const existing = best.get(key);
-    if (existing === undefined || (existing.weightPct === null && c.weightPct !== null)) {
-      best.set(key, c);
+    const at = kept.findIndex((k) => sameAssessment(k, c));
+    if (at < 0) {
+      kept.push(c);
+      continue;
     }
+    const existing = kept[at] as Candidate;
+    kept[at] = preferred(existing, c);
   }
 
-  return [...best.values()].sort((a, b) => a.dueAt - b.dueAt);
+  return kept.sort((a, b) => a.dueAt - b.dueAt);
+};
+
+const numberIn = (title: string): string | null => /\b([0-9]{1,2})\b/.exec(title)?.[1] ?? null;
+
+/**
+ * Same kind on the same day is one assessment named twice, as when a schedule
+ * says "Quiz 4" and the grading table says "Unit 4 - Quiz". Different numbers
+ * keep them apart: Lab 3 and Lab 4 can share a day.
+ */
+const sameAssessment = (a: Candidate, b: Candidate): boolean => {
+  if (a.kind !== b.kind || dateKey(a.date) !== dateKey(b.date)) return false;
+  const an = numberIn(a.title);
+  const bn = numberIn(b.title);
+  return an === null || bn === null || an === bn;
+};
+
+/** The reading with a weight wins, then the more descriptive title. */
+const preferred = (a: Candidate, b: Candidate): Candidate => {
+  if ((a.weightPct === null) !== (b.weightPct === null)) return a.weightPct !== null ? a : b;
+  return b.title.length > a.title.length ? b : a;
 };
 
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

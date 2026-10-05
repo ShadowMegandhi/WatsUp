@@ -346,3 +346,52 @@ describe('toLines', () => {
     expect(lines[0]).toContain('Tutorial Test 3');
   });
 });
+
+describe('outline-site page layout', () => {
+  // Shaped like outline.uwaterloo.ca: cells indented across source lines,
+  // schedule cells wrapped in <p>, weights as bare numbers.
+  const page = `<html><body>
+    <table class="multitable"><tbody>
+      <tr>
+        <td>
+          Unit 1 - Quiz
+        </td>
+        <td>
+          October 2nd
+        </td>
+        <td>
+          In-person
+        </td>
+      </tr>
+      <tr>
+        <td>
+          Unit 2 - Tutorial activity
+        </td>
+        <td>
+          October 23rd
+        </td>
+      </tr>
+    </tbody></table>
+    <table><tr><td><p>Dec 8th</p></td><td><p>L23</p></td><td><p>Quiz 4</p></td></tr></table>
+    <table><tr><td><p>Unit 4 - Quiz</p></td><td><p>December 8th</p></td></tr></table>
+  </body></html>`;
+
+  it('keeps each table row on one line', () => {
+    const lines = toLines(page);
+    expect(lines.some((l) => l.includes('Unit 1 - Quiz') && l.includes('October 2nd'))).toBe(true);
+    expect(lines.some((l) => l.includes('Dec 8th') && l.includes('Quiz 4'))).toBe(true);
+  });
+
+  it('reads the quizzes and tutorial activities, named by unit', () => {
+    const found = extractAssessments(toLines(page), FALL);
+    expect(found.map((c) => c.title)).toEqual([
+      'Unit 1 Quiz',
+      'Unit 2 Tutorial Activity',
+      'Unit 4 Quiz',
+    ]);
+  });
+
+  it('keeps plain text line breaks', () => {
+    expect(toLines('Quiz 1 Oct 2\nQuiz 2 Oct 9')).toEqual(['Quiz 1 Oct 2', 'Quiz 2 Oct 9']);
+  });
+});
