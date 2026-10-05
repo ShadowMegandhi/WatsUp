@@ -33,6 +33,7 @@ const K = {
   apiVersions: 'apiVersions',
   panel: 'panelPrefs',
   seen: 'seenItemIds',
+  outlineLinks: 'outlineLinks',
 } as const;
 
 const area = (): chrome.storage.LocalStorageArea => chrome.storage.local;
@@ -227,6 +228,34 @@ export const syllabusCacheIsFresh = (
 ): boolean =>
   cache !== null && cache.parserVersion === parserVersion && now - cache.parsedAt < ttlMs;
 
+// --- outline links ---------------------------------------------------------
+
+/** Outline links the student pasted, by course. Owned by the user, never synced over. */
+export type OutlineLinks = Readonly<Record<string, readonly string[]>>;
+
+export const readOutlineLinks = (): Promise<OutlineLinks> => get<OutlineLinks>(K.outlineLinks, {});
+
+/**
+ * Saves one course's links and drops its cached syllabus reading, so the next
+ * sync reads the new link instead of waiting out the day-long cache.
+ */
+export const writeOutlineLinks = async (
+  courseId: string,
+  links: readonly string[],
+): Promise<boolean> => {
+  const all = await readOutlineLinks();
+  const next: Record<string, readonly string[]> = { ...all, [courseId]: links };
+  if (links.length === 0) delete next[courseId];
+
+  const saved = await set({ [K.outlineLinks]: next });
+  try {
+    await area().remove(`syllabus:${courseId}`);
+  } catch {
+    // A stale cache only delays the reading by a day.
+  }
+  return saved;
+};
+
 // --- retired keys --------------------------------------------------------
 
 /**
@@ -255,7 +284,7 @@ export const dropRetiredKeys = async (): Promise<void> => {
  */
 export const clearDerived = async (): Promise<void> => {
   const all = await area().get(null);
-  const keep = new Set<string>([K.overrides, K.panel, K.schemaVersion]);
+  const keep = new Set<string>([K.overrides, K.panel, K.schemaVersion, K.outlineLinks]);
 
   const doomed = Object.keys(all).filter((key) => !keep.has(key));
   if (doomed.length > 0) await area().remove(doomed);

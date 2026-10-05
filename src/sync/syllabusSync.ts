@@ -42,15 +42,24 @@ export const syncSyllabus = async (
   le: string,
   learnItems: readonly TaskItem[],
   now: number,
+  /** Links the student added in the Courses tab, read like any outline. */
+  userLinks: readonly string[] = [],
 ): Promise<Result<SyllabusOutcome, AppError>> => {
   const empty = { items: [], docsFound: 0, docsRead: 0, note: null } as const;
 
   const overview = await readOverview(fetcher, course.id, le);
 
   const toc = await fetcher.getJson(`/d2l/api/le/${le}/${course.id}/content/toc`);
-  const picked = toc.ok
-    ? pickSyllabusTopics(flattenToc(toc.value.json, LEARN_ORIGIN, course.id), now)
-    : [];
+  const added = userLinks.map((url, n) => ({
+    id: `link-${n}`,
+    title: n === 0 ? 'Your outline link' : `Your outline link ${n + 1}`,
+    url,
+    typeIdentifier: 'Link',
+  }));
+  const picked = [
+    ...added,
+    ...(toc.ok ? pickSyllabusTopics(flattenToc(toc.value.json, LEARN_ORIGIN, course.id), now) : []),
+  ];
 
   if (picked.length === 0 && overview.length === 0) {
     return ok({

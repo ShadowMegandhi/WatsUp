@@ -743,3 +743,47 @@
 /* ---- build stamp ---- */
 
 .build { color: var(--faint); font-size: 10.5px; letter-spacing: 0.02em; }
+
+/* ---- add course outlines (Courses tab) ---- */
+
+.outlines summary {
+  cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+  list-style: none;
+}
+.outlines summary::-webkit-details-marker { display: none; }
+.outlines summary::before { content: '\25B8'; color: var(--faint); font-size: 11px; }
+.outlines[open] summary::before { content: '\25BE'; }
+.outlines summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+
+.steps { margin: 8px 0 10px; padding-left: 18px; color: var(--soft); font-size: 11.5px; }
+.steps li { margin: 3px 0; }
+.steps b { color: var(--ink); font-weight: 650; }
+
+.orow {
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+}
+.ohead { display: flex; align-items: center; gap: 8px; }
+.ohead .toolbtn { margin-left: auto; text-decoration: none; }
+.ostate { font-size: 11px; color: var(--late); }
+.ostate.ok { color: var(--faint); }
+
+.olink {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 6px; font-size: 11.5px; min-width: 0;
+}
+.olink a {
+  color: var(--focus); text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1;
+}
+.olink a:hover { text-decoration: underline; }
+.oremove {
+  all: unset; cursor: pointer; color: var(--faint);
+  padding: 0 4px; font-size: 14px; line-height: 1; border-radius: 4px;
+}
+.oremove:hover { color: var(--late); }
+.oremove:focus-visible { outline: 2px solid var(--focus); }
+
+.oform { display: flex; gap: 6px; margin-top: 6px; }
+.oform .search { padding: 5px 9px; font-size: 11.5px; }

@@ -52,6 +52,7 @@ import { buildDiagnostics } from './diagnostics';
 import { colorVars } from './courseStyle';
 import { Marks } from './Marks';
 import { News } from './News';
+import { Outlines } from './Outlines';
 import type { CommandReply } from '@shared/messages';
 
 /**
@@ -810,6 +811,7 @@ function Courses({ courses, health, items, diagnostics }: CoursesProps) {
 
   return (
     <div class="section" style="padding-top:8px">
+      <Outlines courses={list} health={healthById} />
       <Troubleshoot diagnostics={diagnostics} />
       {list.map((course) => {
         const h = healthById.get(course.id);
