@@ -52,7 +52,21 @@ import { buildDiagnostics } from './diagnostics';
 import { colorVars } from './courseStyle';
 import { Marks } from './Marks';
 import { News } from './News';
-import { grantedOrigins } from '@platform/permissions';
+import type { CommandReply } from '@shared/messages';
+
+/**
+ * Host access as the service worker sees it. chrome.permissions does not
+ * exist in a content script, so asking here directly always reported every
+ * host as withheld, which sent diagnosis the wrong way.
+ */
+const grantedOrigins = async (): Promise<readonly string[]> => {
+  try {
+    const reply = (await chrome.runtime.sendMessage({ type: 'get-hosts' })) as CommandReply | undefined;
+    return reply?.type === 'hosts' ? reply.origins : [];
+  } catch {
+    return [];
+  }
+};
 
 type Tab = 'assigned' | 'overdue' | 'done' | 'calendar' | 'marks' | 'news' | 'courses';
 

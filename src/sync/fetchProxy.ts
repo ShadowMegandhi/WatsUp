@@ -191,27 +191,26 @@ export const isFollowable = (url: string): boolean => {
   }
 };
 
+/** Where an outline fetch ends up when the session has lapsed. */
+export const landedOnSignIn = (finalUrl: string): boolean => {
+  if (!isFollowable(finalUrl)) return true;
+  return /\/(?:oidc|login|adfs|saml|sso)\//i.test(new URL(finalUrl).pathname + '/');
+};
+
 /**
  * Fetches a document from another uwaterloo host.
  *
  * This cannot go through the content-script relay: that runs on a LEARN page
  * and a cross-origin request from it would be refused. The service worker can
- * do it directly because the extension holds a host permission, which is the
- * one thing that makes the request same-site.
- */
-/**
- * Fetches a document from another uwaterloo host.
+ * do it directly because the extension holds the host permission.
  *
- * Redirects are deliberately not followed. A lapsed session on the outline
- * system bounces to Duo, which is a host this extension has no permission
- * for and will never ask for, so following the chain fails with a bare
- * "Failed to fetch" that names neither the cause nor the cure. Stopping at
- * the redirect turns the same situation into something actionable: the
- * session has lapsed, sign in once.
- *
- * This also cannot go through the content-script relay, which runs on a
- * LEARN page and would have its cross-origin request refused. The service
- * worker can do it because the extension holds the host permission.
+ * Redirects are handled in two steps. Outline links routinely bounce once
+ * (a trailing slash, a canonical id) even when signed in, so a redirect alone
+ * does not mean signed out; treating it that way reported "sign in" for
+ * outlines that were fine. But a lapsed session bounces on to Duo, a host
+ * this extension has no permission for, and following that chain fails with
+ * a bare "Failed to fetch". So: ask without following; on a redirect, follow
+ * once, and if that throws or lands on a sign-in page, the session lapsed.
  */
 export const fetchExternalText = async (url: string): Promise<Result<string, AppError>> => {
   if (!isFollowable(url)) {
@@ -219,12 +218,15 @@ export const fetchExternalText = async (url: string): Promise<Result<string, App
   }
 
   try {
-    const response = await fetch(url, { credentials: 'include', redirect: 'manual' });
+    let response = await fetch(url, { credentials: 'include', redirect: 'manual' });
 
-    // An opaque redirect is what a manual-redirect fetch reports when the
-    // server tried to send us somewhere, which here means sign-in.
     if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
-      return err(authRedirect(url));
+      try {
+        response = await fetch(url, { credentials: 'include', redirect: 'follow' });
+      } catch {
+        return err(authRedirect(url));
+      }
+      if (landedOnSignIn(response.url)) return err(authRedirect(url));
     }
 
     if (!response.ok) return err(httpError(response.status, url));

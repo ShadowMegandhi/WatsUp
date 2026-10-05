@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { interpret, headerLookupFrom } from '@sync/fetchProxy';
+import { interpret, headerLookupFrom, landedOnSignIn } from '@sync/fetchProxy';
 
 const LEARN = 'https://learn.uwaterloo.ca';
 const base = {
@@ -106,5 +106,19 @@ describe('headerLookupFrom', () => {
 
   it('returns null for an absent header', () => {
     expect(headerLookupFrom({})('retry-after')).toBeNull();
+  });
+});
+
+describe('landedOnSignIn', () => {
+  it('flags the outline sign-in page', () => {
+    expect(landedOnSignIn('https://outline.uwaterloo.ca/oidc/login/?next=/viewer/')).toBe(true);
+  });
+
+  it('flags a bounce to a host we do not follow', () => {
+    expect(landedOnSignIn('https://adfs.uwaterloo.ca/adfs/ls/')).toBe(true);
+  });
+
+  it('accepts an ordinary outline page reached by a redirect', () => {
+    expect(landedOnSignIn('https://outline.uwaterloo.ca/viewer/view/12345/')).toBe(false);
   });
 });

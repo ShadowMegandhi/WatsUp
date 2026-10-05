@@ -52,6 +52,8 @@ export type Command =
    *  opening five tabs does not mean five syncs. */
   | { readonly type: 'sync-if-stale' }
   | { readonly type: 'get-status' }
+  /** Content scripts cannot read chrome.permissions, so they ask the worker. */
+  | { readonly type: 'get-hosts' }
   /** Throw away derived data and sync again. Keeps ticked-off state. */
   | { readonly type: 'reset-and-sync' };
 
@@ -59,6 +61,7 @@ export type CommandReply =
   | { readonly type: 'probe-started' }
   | { readonly type: 'probe-result'; readonly report: ProbeReport | null }
   | { readonly type: 'status'; readonly status: RuntimeStatus }
+  | { readonly type: 'hosts'; readonly origins: readonly string[] }
   | { readonly type: 'error'; readonly message: string };
 
 export interface RuntimeStatus {

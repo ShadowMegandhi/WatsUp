@@ -28,6 +28,7 @@ import {
   writeProbeReportCompat,
 } from '@storage/storeCompat';
 import { dropRetiredKeys } from '@storage/store';
+import { grantedOrigins } from '@platform/permissions';
 
 chrome.runtime.onConnect.addListener((port) => {
   registerRelayPort(port);
@@ -120,6 +121,9 @@ const handleCommand = async (command: Command): Promise<CommandReply> => {
 
     case 'get-status':
       return { type: 'status', status: await status() };
+
+    case 'get-hosts':
+      return { type: 'hosts', origins: await grantedOrigins() };
 
     case 'probe': {
       const fetcher = hasRelay() ? relayFetcher() : workerFetcher();
