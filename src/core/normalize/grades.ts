@@ -27,9 +27,13 @@ interface RawGradeValue {
  */
 const NOT_AN_ITEM = new Set([7, 8, 9]);
 
-/** Course home, the LEARN path this codebase has seen work. */
+/**
+ * The course's My Grades page. LEARN has no page for a single grade item, so
+ * this is where a mark and its feedback are actually shown. Confirm it in a
+ * browser after changing it: a guessed LEARN path once led to an error page.
+ */
 const linkFor = (learnOrigin: string, courseId: string): string =>
-  `${learnOrigin}/d2l/home/${courseId}`;
+  `${learnOrigin}/d2l/lms/grades/my_grades/main.d2l?ou=${courseId}`;
 
 export const normalizeGrades = (
   json: unknown,

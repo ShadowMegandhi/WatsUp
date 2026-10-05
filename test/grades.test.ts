@@ -26,6 +26,11 @@ describe('normalizeGrades', () => {
     expect(g?.returnedAt).toBe(Date.UTC(2026, 9, 2, 15, 0));
   });
 
+  it("links to the course's My Grades page, where the mark and its feedback are shown", () => {
+    const [g] = normalizeGrades([value({})], '1234', ORIGIN);
+    expect(g?.url).toBe(`${ORIGIN}/d2l/lms/grades/my_grades/main.d2l?ou=1234`);
+  });
+
   it('falls back to the last-modified time when there is no release date', () => {
     const [g] = normalizeGrades([value({ ReleasedDate: null })], '1234', ORIGIN);
     expect(g?.returnedAt).toBe(Date.UTC(2026, 9, 1, 15, 0));
