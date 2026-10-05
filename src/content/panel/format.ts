@@ -97,6 +97,17 @@ export const summaryLine = (overdue: number, today: number, week: number): strin
   return parts.length === 0 ? "You're all caught up" : parts.join(' · ');
 };
 
+/** Just the time of day, or "All day" for an item read from an outline. */
+export const timeOf = (at: number, allDay: boolean): string => (allDay ? 'All day' : formatTime(at));
+
+/** "Today", "Tomorrow", or "Wed, Oct 7": the day a Next up card is about. */
+export const relativeDay = (at: number, now: number): string => {
+  const days = localDaysBetween(now, at);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  return dayName(at);
+};
+
 /** "Mon, Oct 19", for day group headers. */
 export const dayName = (at: number): string =>
   new Date(at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });

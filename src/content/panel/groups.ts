@@ -83,12 +83,22 @@ const headerFor = (
   }
 };
 
-/** The soonest open item that is not yet late, for the Next up card. */
-export const nextUp = (tasks: readonly ResolvedTask[], now: number): ResolvedTask | null => {
-  let best: ResolvedTask | null = null;
-  for (const t of tasks) {
-    if (t.status === 'completed' || t.effectiveDueAt === null || t.effectiveDueAt < now) continue;
-    if (best === null || t.effectiveDueAt < (best.effectiveDueAt ?? Infinity)) best = t;
-  }
-  return best;
+/**
+ * Everything due on the next day that has anything due, for the Next up card.
+ *
+ * The whole day, not just the single soonest item: two things due the same
+ * Wednesday are both "next", and showing one of them hid the other.
+ */
+export const nextUpDay = (tasks: readonly ResolvedTask[], now: number): readonly ResolvedTask[] => {
+  const upcoming = tasks.filter(
+    (t) => t.status !== 'completed' && t.effectiveDueAt !== null && t.effectiveDueAt >= now,
+  );
+  if (upcoming.length === 0) return [];
+
+  const first = Math.min(...upcoming.map((t) => t.effectiveDueAt as number));
+  const day = localDaysBetween(now, first);
+  return sortForSection(
+    upcoming.filter((t) => localDaysBetween(now, t.effectiveDueAt as number) === day),
+    'upcoming',
+  );
 };

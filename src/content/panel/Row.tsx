@@ -8,6 +8,7 @@
  * be found at a glance without reading.
  */
 
+import { useState } from 'preact/hooks';
 import { shortCourseLabel } from '@core/courseColor';
 import type { Course, ResolvedTask } from '@core/types';
 import { colorVars } from './courseStyle';
@@ -101,34 +102,66 @@ type FilterProps = {
 /**
  * One chip per course, in its colour. Tapping one shows only that course;
  * tapping it again, or "All", shows everything.
+ *
+ * Folded to a single sideways-scrolling row by default, so eight courses do
+ * not push the list half a screen down. The + at the end opens them all.
+ * A chosen course jumps to the front, so it is never scrolled out of sight.
  */
 export function CourseFilter({ courses, selected, onSelect }: FilterProps) {
+  const [open, setOpen] = useState(false);
   if (courses.length < 2) return null;
 
+  const ordered =
+    selected === null
+      ? courses
+      : [...courses.filter((c) => c.id === selected), ...courses.filter((c) => c.id !== selected)];
+
   return (
-    <div class="filters" role="toolbar" aria-label="Show one course">
-      <button
-        type="button"
-        class={selected === null ? 'fchip all on' : 'fchip all'}
-        aria-pressed={selected === null}
-        onClick={() => onSelect(null)}
+    <div class={open ? 'filterbar open' : 'filterbar'}>
+      <div
+        class="filters"
+        role="toolbar"
+        aria-label="Show one course"
+        onWheel={(e) => {
+          const row = e.currentTarget;
+          if (open || e.deltaY === 0 || row.scrollWidth <= row.clientWidth) return;
+          row.scrollLeft += e.deltaY;
+          e.preventDefault();
+        }}
       >
-        All
-      </button>
-      {courses.map((c) => (
         <button
           type="button"
-          key={c.id}
-          class={selected === c.id ? 'fchip on' : 'fchip'}
-          aria-pressed={selected === c.id}
-          title={c.name}
-          style={colorVars(c.id)}
-          onClick={() => onSelect(selected === c.id ? null : c.id)}
+          class={selected === null ? 'fchip all on' : 'fchip all'}
+          aria-pressed={selected === null}
+          onClick={() => onSelect(null)}
         >
-          <span class="fdot" aria-hidden="true" />
-          {shortCourseLabel(c.code, c.name)}
+          All courses
         </button>
-      ))}
+        {ordered.map((c) => (
+          <button
+            type="button"
+            key={c.id}
+            class={selected === c.id ? 'fchip on' : 'fchip'}
+            aria-pressed={selected === c.id}
+            title={c.name}
+            style={colorVars(c.id)}
+            onClick={() => onSelect(selected === c.id ? null : c.id)}
+          >
+            <span class="fdot" aria-hidden="true" />
+            {shortCourseLabel(c.code, c.name)}
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        class="fmore"
+        aria-expanded={open}
+        aria-label={open ? 'Show fewer courses' : `Show all ${courses.length} courses`}
+        title={open ? 'Show fewer' : 'Show all courses'}
+        onClick={() => setOpen(!open)}
+      >
+        {open ? '−' : '+'}
+      </button>
     </div>
   );
 }

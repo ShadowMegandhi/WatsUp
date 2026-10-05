@@ -72,3 +72,13 @@ describe('paletteSlots', () => {
     assignCourseColors([]);
   });
 });
+
+describe('paletteSlots with more enrolments than colours', () => {
+  it('keeps the courses with work due distinct, whatever else is enrolled', () => {
+    const due = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8'];
+    const extra = ['res', 'whmis', 'coop', 'engrm'];
+    const slots = paletteSlots(due, extra);
+    expect(new Set(due.map((id) => slots.get(id))).size).toBe(8);
+    expect(extra.every((id) => slots.has(id))).toBe(true);
+  });
+});

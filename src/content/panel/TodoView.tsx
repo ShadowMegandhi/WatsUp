@@ -8,8 +8,8 @@
 import { shortCourseLabel } from '@core/courseColor';
 import type { ResolvedTask } from '@core/types';
 import { colorVars } from './courseStyle';
-import { countdown, formatDueShort, KIND_LABEL } from './format';
-import { groupByDay, nextUp } from './groups';
+import { countdown, KIND_LABEL, relativeDay, timeOf } from './format';
+import { groupByDay, nextUpDay } from './groups';
 import { Empty, Row, type EmptyCopy } from './Row';
 
 type TodoProps = {
@@ -32,7 +32,7 @@ export function TodoView({
   onToggle,
 }: TodoProps) {
   const groups = groupByDay(tasks, now);
-  const next = searching ? null : nextUp(tasks, now);
+  const next = searching ? [] : nextUpDay(tasks, now);
   const completed = tasks
     .filter((t) => t.status === 'completed')
     .sort((a, b) => (b.effectiveDueAt ?? 0) - (a.effectiveDueAt ?? 0));
@@ -47,7 +47,7 @@ export function TodoView({
 
   return (
     <div class="todo">
-      {next !== null && <NextUp task={next} now={now} />}
+      {next.length > 0 && <NextUp tasks={next} now={now} />}
 
       {groups.length === 0 && <Empty copy={empty} />}
 
@@ -83,28 +83,39 @@ export function TodoView({
   );
 }
 
-function NextUp({ task, now }: { task: ResolvedTask; now: number }) {
-  const course = task.course;
-  const due = task.effectiveDueAt ?? now;
+/** Everything due on the next day with anything due, one line each. */
+function NextUp({ tasks, now }: { tasks: readonly ResolvedTask[]; now: number }) {
+  const first = tasks[0];
+  if (first === undefined) return null;
+  const due = first.effectiveDueAt ?? now;
 
   return (
-    <a
-      class="nextup"
-      href={task.item.url}
-      target="_top"
-      rel="noreferrer"
-      style={colorVars(course?.id ?? null)}
-    >
-      <span class="nlabel">Next up</span>
-      <span class="ntitle">{task.effectiveTitle}</span>
-      <span class="nmeta">
-        {course !== null && <span class="course">{shortCourseLabel(course.code, course.name)}</span>}
-        <span class="kind">{KIND_LABEL[task.item.kind] ?? 'Item'}</span>
-      </span>
-      <span class="nwhen">
-        <span class="nday">{formatDueShort(due, now, task.item.isAllDay)}</span>
-        {!task.item.isAllDay && <span class="ncount">{countdown(due, now)}</span>}
-      </span>
-    </a>
+    <section class="nextup" aria-label="Next up">
+      <div class="nhead">
+        <span class="nlabel">Next up</span>
+        <span class="nday">{relativeDay(due, now)}</span>
+        {!first.item.isAllDay && <span class="ncount">{countdown(due, now)}</span>}
+        {tasks.length > 1 && <span class="nnum">{tasks.length} due</span>}
+      </div>
+      {tasks.map((t) => (
+        <a
+          key={t.item.id}
+          class="nitem"
+          href={t.item.url}
+          target="_top"
+          rel="noreferrer"
+          style={colorVars(t.course?.id ?? null)}
+        >
+          {t.course !== null && (
+            <span class="course">{shortCourseLabel(t.course.code, t.course.name)}</span>
+          )}
+          <span class="ntitle" title={t.effectiveTitle}>
+            {t.effectiveTitle}
+            <span class="nkind">{KIND_LABEL[t.item.kind] ?? 'Item'}</span>
+          </span>
+          <span class="ntime">{timeOf(t.effectiveDueAt ?? now, t.item.isAllDay)}</span>
+        </a>
+      ))}
+    </section>
   );
 }

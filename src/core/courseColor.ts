@@ -53,28 +53,40 @@ const hashOf = (courseId: string): number => {
  * not, which defeats the point. Each course still starts from its hashed
  * slot, and a clash moves to the next free one. Ids are taken in sorted
  * order, so the same set of courses always gets the same colours.
+ *
+ * `primary` is served first. With more enrolments than colours (residence,
+ * WHMIS and the like carry items too), the courses with work actually due
+ * must be the ones that stay distinct; `rest` gets whatever is left over.
  */
-export const paletteSlots = (courseIds: readonly string[]): ReadonlyMap<string, number> => {
+export const paletteSlots = (
+  primary: readonly string[],
+  rest: readonly string[] = [],
+): ReadonlyMap<string, number> => {
   const slots = new Map<string, number>();
   const taken = new Set<number>();
 
-  for (const id of [...new Set(courseIds)].sort()) {
-    let slot = hashOf(id) % PALETTE.length;
-    if (taken.size < PALETTE.length) {
-      while (taken.has(slot)) slot = (slot + 1) % PALETTE.length;
+  const place = (ids: readonly string[]): void => {
+    for (const id of [...new Set(ids)].sort()) {
+      if (slots.has(id)) continue;
+      let slot = hashOf(id) % PALETTE.length;
+      if (taken.size < PALETTE.length) {
+        while (taken.has(slot)) slot = (slot + 1) % PALETTE.length;
+      }
+      taken.add(slot);
+      slots.set(id, slot);
     }
-    taken.add(slot);
-    slots.set(id, slot);
-  }
+  };
 
+  place(primary);
+  place(rest);
   return slots;
 };
 
 let assigned: ReadonlyMap<string, number> = new Map();
 
 /** Tells colorFor which courses are shown together, so they never share a colour. */
-export const assignCourseColors = (courseIds: readonly string[]): void => {
-  assigned = paletteSlots(courseIds);
+export const assignCourseColors = (primary: readonly string[], rest: readonly string[] = []): void => {
+  assigned = paletteSlots(primary, rest);
 };
 
 export const colorFor = (courseId: string): CourseColor => {

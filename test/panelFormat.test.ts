@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { countdown, formatDueShort, summaryLine } from '../src/content/panel/format';
-import { groupByDay, nextUp } from '../src/content/panel/groups';
+import { groupByDay, nextUpDay } from '../src/content/panel/groups';
 import type { ResolvedTask, TaskStatus } from '@core/types';
 
 /** Mon Oct 19 2026, 10:00 local. */
@@ -54,14 +54,14 @@ describe('groupByDay', () => {
   });
 });
 
-describe('nextUp', () => {
-  it('is the soonest item not yet late or done', () => {
-    const t = nextUp([task('b', at(22)), task('a', at(19)), task('x', at(17), 'overdue')], NOW);
-    expect(t?.effectiveTitle).toBe('a');
+describe('nextUpDay', () => {
+  it('is everything due on the next day with anything due', () => {
+    const tasks = [task('b', at(21, 23, 59)), task('a', at(21, 9, 0)), task('c', at(22)), task('x', at(17), 'overdue')];
+    expect(nextUpDay(tasks, NOW).map((t) => t.effectiveTitle)).toEqual(['a', 'b']);
   });
 
-  it('is null when nothing is coming', () => {
-    expect(nextUp([task('x', at(17), 'overdue')], NOW)).toBeNull();
+  it('is empty when nothing is coming', () => {
+    expect(nextUpDay([task('x', at(17), 'overdue')], NOW)).toEqual([]);
   });
 });
 

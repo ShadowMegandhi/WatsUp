@@ -116,10 +116,19 @@ export const Panel = () => {
     setMarks(allMarks);
     setSeenGrades(new Set(seenG ?? []));
 
-    // Colours are handed out across the courses actually shown, so no two
-    // of them can end up looking alike.
+    // Colours are handed out so no two courses with work still to do can look
+    // alike. Everything else shown (residence, WHMIS...) gets what is left.
     const withWork = new Set(i.map((x) => x.courseId));
-    assignCourseColors(c.filter((x) => isWorthShowing(x, withWork)).map((x) => x.id));
+    const unfinished = new Set(
+      i
+        .filter((x) => (o[x.id]?.completion ?? (x.learnCompleted ? 'done' : 'not-done')) !== 'done')
+        .map((x) => x.courseId),
+    );
+    const shown = c.filter((x) => isWorthShowing(x, withWork)).map((x) => x.id);
+    assignCourseColors(
+      shown.filter((id) => unfinished.has(id)),
+      shown.filter((id) => !unfinished.has(id)),
+    );
 
     setHosts(await grantedOrigins());
     setItems(i);
