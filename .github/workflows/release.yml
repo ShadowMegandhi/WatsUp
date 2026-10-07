@@ -1,0 +1,95 @@
+# Every push to master that touches the extension becomes a downloadable
+# release: lint, test, build, then publish dist/ as watsup.zip on a new
+# "Latest" release. Nothing ships if a check fails.
+#
+# The newest download is always at
+#   https://github.com/ShadowMegandhi/WatsUp/releases/latest/download/watsup.zip
+
+name: Release
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'scripts/preview/**'
+      - 'scripts/preview.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: 0.4.${{ github.run_number }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npx vitest run
+
+      - name: Build
+        run: npm run build
+
+      # Chrome reads the version from the manifest; stamping the run number
+      # makes every release a distinct, increasing version.
+      - name: Stamp version
+        run: |
+          node -e "
+            const fs = require('fs');
+            const p = 'dist/manifest.json';
+            const m = JSON.parse(fs.readFileSync(p, 'utf8'));
+            m.version = process.env.VERSION;
+            fs.writeFileSync(p, JSON.stringify(m, null, 2) + '\n');
+          "
+
+      - name: Package
+        run: cd dist && zip -qr ../watsup.zip .
+
+      - name: Publish release
+        run: |
+          SUBJECT="$(git log -1 --format=%s)"
+          cat > notes.md <<EOF
+          **What changed:** ${SUBJECT}
+
+          **Install or update**
+          1. Download **watsup.zip** below and unzip it (replace the old folder if you are updating).
+          2. Open \`chrome://extensions\` and turn on **Developer mode**.
+          3. First time: **Load unpacked** and pick the unzipped folder. Updating: press the reload arrow on WatsUp.
+          4. Refresh LEARN.
+
+          Not affiliated with the University of Waterloo.
+          EOF
+          gh release create "v${VERSION}" watsup.zip \
+            --title "WatsUp ${VERSION}" \
+            --notes-file notes.md \
+            --target "${GITHUB_SHA}" \
+            --latest
+
+      # Keep the releases page short: the ten newest stay, older ones go.
+      - name: Prune old releases
+        run: |
+          gh release list --limit 100 --json tagName,createdAt \
+            --jq 'sort_by(.createdAt) | reverse | .[10:] | .[].tagName' |
+          while read -r tag; do
+            [ -n "$tag" ] && gh release delete "$tag" --yes --cleanup-tag
+          done

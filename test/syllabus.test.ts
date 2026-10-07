@@ -397,9 +397,9 @@ describe('outline-site page layout', () => {
 });
 
 describe('a schedule row with a week span and a dated note', () => {
-  // Shaped like the ENGR 121 Fall 2026 weekly schedule.
+  // Shaped like a real weekly schedule row on the outline site.
   const row =
-    '| 9 | | Nov 2 - 6 | | 8. Arrays & Structs | | 10.1, Chapters 7 | | Midterm Exam: Monday November 2 at 5:00pm in RCH 100 and RCH 100 Lab 6: functions |';
+    '| 9 | | Nov 2 - 6 | | 8. Arrays & Structs | | 10.1, Chapters 7 | | Midterm Exam: Monday November 2 at 5:00pm in E7 1000 and E7 1000 Lab 6: functions |';
 
   it('reads the midterm from its own note, with its time', () => {
     const found = readLine(row, FALL);

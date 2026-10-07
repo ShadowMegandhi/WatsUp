@@ -52,7 +52,7 @@ const p = (text: string): string => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`;
 const row = (...cells: string[]): string =>
   `<w:tr>${cells.map((c) => `<w:tc>${p(c)}</w:tc>`).join('')}</w:tr>`;
 
-const BODY = `<?xml version="1.0"?><w:document><w:body>${p('ENGR 161 Course Outline')}<w:tbl>${row(
+const BODY = `<?xml version="1.0"?><w:document><w:body>${p('ENGR 101 Course Outline')}<w:tbl>${row(
   'Week 7',
   'Oct 19',
   'Quiz 2',
@@ -68,7 +68,7 @@ describe('documentXmlToLines', () => {
   });
 
   it('puts ordinary paragraphs on their own lines', () => {
-    expect(documentXmlToLines(BODY)[0]).toBe('ENGR 161 Course Outline');
+    expect(documentXmlToLines(BODY)[0]).toBe('ENGR 101 Course Outline');
   });
 });
 

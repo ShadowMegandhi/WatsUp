@@ -82,7 +82,7 @@ const COURSES: readonly Course[] = [
   course('100007', 'MATH102_instr_1269', 'Calculus 1'),
   course('100009', 'COMM101_instr_1269', 'Technical Communication'),
   course('100010', 'CS121_instr_1269', 'Intro to Programming'),
-  course('100011', 'GEN100_instr_1269', 'Problem Solving Seminar'),
+  course('100011', 'GEN100_instr_1269', 'Problem Solving'),
 ];
 
 const item = (

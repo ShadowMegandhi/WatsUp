@@ -39,9 +39,8 @@ dates are the live ones.
 The extension is not on the Chrome Web Store yet, so it installs unpacked. This
 takes about a minute.
 
-1. Download **`watsup.zip`** from the
-   [latest release](../../releases/latest) and unzip it somewhere you will not
-   delete by accident.
+1. **[Download the latest watsup.zip](https://github.com/ShadowMegandhi/WatsUp/releases/latest/download/watsup.zip)**
+   and unzip it somewhere you will not delete by accident.
 2. Open `chrome://extensions`
 3. Turn on **Developer mode** (top right)
 4. Click **Load unpacked** and pick the unzipped folder
@@ -50,8 +49,12 @@ takes about a minute.
 Chrome will show a "Developer mode extensions" warning on startup. That is Chrome
 telling you this extension did not come from the Web Store, which is true.
 
-To update later, download the new zip, replace the folder contents, and click the
-reload icon on the extension card. **Then refresh your LEARN tab** — Chrome does
+### Updating
+
+A new release is published automatically every time the extension changes, so the
+link above always gives you the newest version. To update: download it again,
+replace the folder contents, and click the reload icon on the WatsUp card in
+`chrome://extensions`. **Then refresh your LEARN tab** — Chrome does
 not re-inject content scripts into tabs that are already open.
 
 ### From source
