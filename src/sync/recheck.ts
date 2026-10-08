@@ -12,8 +12,16 @@
  */
 
 import type { TaskItem } from '@core/types';
-import { hasAnySubmission, hasFinishedAttempt, withSubmission } from '@core/normalize/quiz';
+import {
+  folderListPath,
+  hasAnySubmission,
+  parseQuizAttempts,
+  parseSubmittedFolders,
+  quizListPath,
+  withSubmission,
+} from '@core/normalize/quiz';
 import { readItemsFor, writeItemsFor } from '@storage/store';
+import { MAX_CONCURRENT_PER_COURSE } from '@shared/constants';
 import type { Fetcher } from './fetchProxy';
 
 /** One look per course per this long, however many LEARN pages load. */
@@ -54,10 +62,19 @@ export const checkItems = async (
   le: string,
   items: readonly TaskItem[],
   now: number,
-): Promise<readonly TaskItem[]> =>
-  Promise.all(
-    items.map(async (item) => {
-      if (item.learnCompleted || !isWorthAsking(item, now)) return item;
+  lookbackMs: number = LOOKBACK_MS,
+): Promise<readonly TaskItem[]> => {
+  const open = (item: TaskItem): boolean => !item.learnCompleted && isWorthAsking(item, now, lookbackMs);
+
+  // Every open quiz in the course is answered by one page, read only if needed.
+  const anyOpenQuiz = items.some((i) => open(i) && i.sources[0]?.system === 'quiz');
+  const attempts = anyOpenQuiz ? await readQuizAttempts(fetcher, courseId) : null;
+
+  // Folders whose direct check LEARN refused (it does once a folder closes).
+  const refused = new Set<string>();
+
+  const checkOne = async (item: TaskItem): Promise<TaskItem> => {
+      if (!open(item)) return item;
 
       const source = item.sources[0];
       if (source === undefined) return item;
@@ -66,21 +83,45 @@ export const checkItems = async (
         const res = await fetcher.getJson(
           `/d2l/api/le/${le}/${courseId}/dropbox/folders/${source.sourceId}/submissions/mysubmissions/`,
         );
+        if (!res.ok) refused.add(item.id);
         return res.ok ? withSubmission(item, hasAnySubmission(res.value.json)) : item;
       }
 
-      if (source.system === 'quiz') {
-        const res = await fetcher.getJson(
-          `/d2l/api/le/${le}/${courseId}/quizzes/${source.sourceId}/attempts/`,
-        );
-        return res.ok ? withSubmission(item, hasFinishedAttempt(res.value.json)) : item;
+      if (source.system === 'quiz' && attempts !== null) {
+        return withSubmission(item, (attempts.get(source.sourceId) ?? 0) > 0);
       }
 
       return item;
-    }),
-  );
+  };
 
-const isWorthAsking = (item: TaskItem, now: number): boolean => {
+  // A few at a time: LEARN publishes no rate limits, so politeness is pacing.
+  const firstPass: TaskItem[] = [];
+  for (let i = 0; i < items.length; i += MAX_CONCURRENT_PER_COURSE) {
+    firstPass.push(...(await Promise.all(items.slice(i, i + MAX_CONCURRENT_PER_COURSE).map(checkOne))));
+  }
+
+  if (refused.size === 0) return firstPass;
+
+  // One read of the assignment list page answers every refused folder.
+  const page = await fetcher.getText(folderListPath(courseId));
+  if (!page.ok) return firstPass;
+  const submitted = parseSubmittedFolders(page.value);
+
+  return firstPass.map((item) =>
+    refused.has(item.id) ? withSubmission(item, submitted.has(item.sources[0]?.sourceId ?? '')) : item,
+  );
+};
+
+/** Attempts used per quiz in a course, or null when LEARN would not show the page. */
+const readQuizAttempts = async (
+  fetcher: Fetcher,
+  courseId: string,
+): Promise<ReadonlyMap<string, number> | null> => {
+  const res = await fetcher.getText(quizListPath(courseId));
+  return res.ok ? parseQuizAttempts(res.value) : null;
+};
+
+const isWorthAsking = (item: TaskItem, now: number, lookbackMs: number): boolean => {
   const due = item.dueAt ?? item.endsAt;
-  return due === null || due > now - LOOKBACK_MS;
+  return due === null || due > now - lookbackMs;
 };

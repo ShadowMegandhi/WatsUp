@@ -12,12 +12,12 @@
 import { type Result, ok, err } from '@shared/result';
 import { type AppError, isFatal } from '@shared/errors';
 import { normalizeDropboxFolders } from '@core/normalize/dropbox';
-import { normalizeQuizzes, hasAnySubmission, withSubmission } from '@core/normalize/quiz';
+import { normalizeQuizzes } from '@core/normalize/quiz';
 import { normalizeNews, type Announcement } from '@core/normalize/news';
 import { normalizeCalendarEvents } from '@core/normalize/calendar';
 import { normalizeCourseGrade, normalizeGrades, withGradeEvidence } from '@core/normalize/grades';
 import { checkItems } from './recheck';
-import { LEARN_ORIGIN, MAX_CONCURRENT_PER_COURSE } from '@shared/constants';
+import { LEARN_ORIGIN } from '@shared/constants';
 import { addDays } from '@shared/time';
 import type { Course, CourseGrade, GradeEntry, TaskItem } from '@core/types';
 import type { Fetcher } from './fetchProxy';
@@ -82,23 +82,19 @@ export const syncCourse = async (
   if (!finalValue.ok && finalValue.error.kind === 'rate-limited') return finalValue;
   const courseGrade = finalValue.ok ? normalizeCourseGrade(finalValue.value.json, course.id) : null;
 
-  const withEvidence = await applySubmissionEvidence(fetcher, course.id, le, assignmentItems, known, now);
-  // Quizzes get the same treatment: a finished attempt ticks the quiz off.
-  // Already-finished ones carry over without asking again.
+  // Submissions do not un-happen, so work already seen as done carries over
+  // without asking again. Everything else open is checked the same way the
+  // instant re-check after a Submit does: assignments directly (falling back
+  // to the assignment list once a folder closes), quizzes from the quiz list.
   const doneBefore = new Set(known.filter((k) => k.learnCompleted).map((k) => k.id));
-  const quizzesWithEvidence = await checkItems(
-    fetcher,
-    course.id,
-    le,
-    quizItems.map((q) =>
-      doneBefore.has(q.id) ? { ...q, learnCompleted: true, learnCompletionEvidence: 'submission' as const } : q,
-    ),
-    now,
+  const carried = [...assignmentItems, ...quizItems].map((i) =>
+    doneBefore.has(i.id) ? { ...i, learnCompleted: true, learnCompletionEvidence: 'submission' as const } : i,
   );
+  const withEvidence = await checkItems(fetcher, course.id, le, carried, now, STALE_AFTER_MS);
 
   return ok({
     courseId: course.id,
-    items: [...withGradeEvidence([...withEvidence, ...quizzesWithEvidence], grades ?? []), ...examItems],
+    items: [...withGradeEvidence(withEvidence, grades ?? []), ...examItems],
     news: news.ok ? normalizeNews(news.value.json, course.id, LEARN_ORIGIN) : [],
     grades,
     courseGrade,
@@ -135,68 +131,6 @@ const fetchCalendar = async (
 
 /** Far enough to cover a whole term including the final exam period. */
 const CALENDAR_DAYS_AHEAD = 150;
-
-/**
- * Asks LEARN what has already been handed in.
- *
- * One call per assignment folder, which is why it is capped and why only
- * assignments get it: quizzes would need an attempts call each and the cost
- * is not worth it for a first pass.
- *
- * A failure here is silent by design. Not knowing whether something was
- * submitted is very different from knowing it was not, and showing a student
- * an unticked box is the safe direction to be wrong in.
- */
-const applySubmissionEvidence = async (
-  fetcher: Fetcher,
-  courseId: string,
-  le: string,
-  items: readonly TaskItem[],
-  known: readonly TaskItem[],
-  now: number,
-): Promise<readonly TaskItem[]> => {
-  const alreadyDone = new Set(known.filter((k) => k.learnCompleted).map((k) => k.id));
-  const out: TaskItem[] = [];
-  const toCheck: TaskItem[] = [];
-
-  for (const item of items) {
-    // A submission does not un-happen, so re-asking about something already
-    // handed in is a request spent to learn nothing.
-    if (alreadyDone.has(item.id)) {
-      out.push({ ...item, learnCompleted: true, learnCompletionEvidence: 'submission' });
-      continue;
-    }
-
-    // Long-past work is not worth a call every half hour either. It stays
-    // visible and tickable by hand.
-    const due = item.dueAt ?? item.endsAt;
-    if (due !== null && now - due > STALE_AFTER_MS) {
-      out.push(item);
-      continue;
-    }
-
-    toCheck.push(item);
-  }
-
-  for (let i = 0; i < toCheck.length; i += MAX_CONCURRENT_PER_COURSE) {
-    const batch = toCheck.slice(i, i + MAX_CONCURRENT_PER_COURSE);
-    const checked = await Promise.all(
-      batch.map(async (item) => {
-        const folderId = item.sources[0]?.sourceId;
-        if (folderId === undefined) return item;
-
-        const res = await fetcher.getJson(
-          `/d2l/api/le/${le}/${courseId}/dropbox/folders/${folderId}/submissions/mysubmissions/`,
-        );
-        if (!res.ok) return item;
-        return withSubmission(item, hasAnySubmission(res.value.json));
-      }),
-    );
-    out.push(...checked);
-  }
-
-  return out;
-};
 
 /** Past this, a deadline is history and not worth re-checking each sync. */
 const STALE_AFTER_MS = 45 * 24 * 60 * 60 * 1000;

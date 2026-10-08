@@ -86,38 +86,58 @@ export const withSubmission = (item: TaskItem, hasSubmission: boolean): TaskItem
     ? { ...item, learnCompleted: true, learnCompletionEvidence: 'submission' }
     : item;
 
+/** The student's own quiz list page for a course, which shows attempts used. */
+export const quizListPath = (courseId: string): string =>
+  `/d2l/lms/quizzing/user/quizzes_list.d2l?ou=${courseId}`;
+
 /**
- * Reads a quiz attempts payload and reports whether any attempt was finished.
+ * Attempts used per quiz, read from the student's quiz list page.
  *
- * Strict on purpose: an attempt that was opened but never submitted does not
- * count, so an attempt has to carry a completion stamp. Field names vary
- * between Brightspace versions, so the usual ones are all accepted; an
- * attempt carrying none of them is treated as not finished.
+ * The API route for a quiz's attempts answers students with 403 Not
+ * Authorized (checked on UW LEARN, le 1.99), so the API cannot say whether a
+ * quiz was done. The quiz list page the student sees can: each row links
+ * GoToQuiz(<quizId>, ...) and ends in an attempts cell, "1 / 1" or
+ * "2 / Unlimited". A row whose shape does not match is skipped, so an
+ * unfamiliar page ticks nothing off rather than ticking off the wrong thing.
  */
-export const hasFinishedAttempt = (json: unknown): boolean => {
-  for (const row of asArray(json)) {
-    if (row === null || typeof row !== 'object') continue;
-    const attempt = row as Record<string, unknown>;
-    for (const key of FINISHED_KEYS) {
-      const v = attempt[key];
-      if (v === true) return true;
-      if (typeof v === 'string' && v.trim() !== '') return true;
-      if (typeof v === 'number' && v > 0) return true;
-    }
+export const parseQuizAttempts = (html: string): ReadonlyMap<string, number> => {
+  const used = new Map<string, number>();
+
+  for (const row of html.split(/<tr[\s>]/i).slice(1)) {
+    const id = /GoToQuiz\(\s*(\d+)/.exec(row)?.[1];
+    if (id === undefined) continue;
+
+    const cell = /<label[^>]*>\s*(\d+)\s*<\/label>\s*<label[^>]*>\s*\/\s*(?:\d+|unlimited)\s*<\/label>/i.exec(row);
+    if (cell === null) continue;
+
+    used.set(id, Number(cell[1]));
   }
-  return false;
+
+  return used;
 };
 
-const FINISHED_KEYS: readonly string[] = [
-  'Completed',
-  'CompletedDate',
-  'DateCompleted',
-  'Submitted',
-  'SubmittedDate',
-  'SubmissionDate',
-  'IsCompleted',
-  'IsSubmitted',
-];
+/** The student's own assignment list page for a course. */
+export const folderListPath = (courseId: string): string =>
+  `/d2l/lms/dropbox/user/folders_list.d2l?ou=${courseId}`;
+
+/**
+ * Assignment folders with at least one submission, read from the student's
+ * assignment list page.
+ *
+ * The fallback for folders whose mysubmissions route answers 403, which
+ * LEARN does once a folder's availability window has closed. A submitted
+ * folder's row still links its history, folders_history.d2l?db=<folderId>,
+ * with text such as "1 Submission, 2 Files"; an unsubmitted one says
+ * "Not Submitted" and carries no such link.
+ */
+export const parseSubmittedFolders = (html: string): ReadonlySet<string> => {
+  const done = new Set<string>();
+  const link = /folders_history\.d2l\?db=(\d+)[^>]*>\s*(\d+)\s+Submissions?\b/gi;
+  for (let m = link.exec(html); m !== null; m = link.exec(html)) {
+    if (Number(m[2]) > 0 && m[1] !== undefined) done.add(m[1]);
+  }
+  return done;
+};
 
 /** Reads a mysubmissions payload and reports whether anything was handed in. */
 export const hasAnySubmission = (json: unknown): boolean => {

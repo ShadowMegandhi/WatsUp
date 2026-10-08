@@ -1,12 +1,26 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import { checkItems } from '@sync/recheck';
-import { hasFinishedAttempt } from '@core/normalize/quiz';
+import { parseQuizAttempts, parseSubmittedFolders } from '@core/normalize/quiz';
 import { courseOfWorkPage, isSubmitClick } from '../src/content/submitWatch';
 import { fakeFetcher } from '@test/doubles/fakeFetcher';
 import type { TaskItem } from '@core/types';
 
 const NOW = new Date(2026, 9, 8, 12, 0).getTime();
+
+/** Shaped like a LEARN quiz list page: GoToQuiz(id) and a "used / allowed" cell. */
+const quizRow = (id: string, name: string, used: string, allowed: string): string =>
+  `<tr><td><div class="dco"><a class="d2l-link" onclick="GoToQuiz(${id}, true);;return false;" href="javascript://">${name}</a>` +
+  `<span class="ds_b">Due on Oct 8, 2026 11:59 PM</span></div></td><td class="d_gn">&nbsp;</td>` +
+  `<td class="d_gn d_gc"><label>${used}</label><label> / ${allowed}</label></td></tr>`;
+
+const QUIZ_PAGE =
+  '<table><tr><th>Current Quizzes</th><th>Evaluation Status</th><th>Attempts</th></tr>' +
+  quizRow('501', 'Check-in Survey', '1', '1') +
+  quizRow('502', 'Knowledge Quiz', '2', '3') +
+  quizRow('503', 'Safety Quiz', '0', '3') +
+  quizRow('504', 'Practice Set', '1', 'Unlimited') +
+  '</table>';
 const DAY = 86_400_000;
 
 const item = (id: string, system: 'dropbox' | 'quiz' | 'calendar', dueAt: number | null, done = false): TaskItem =>
@@ -33,10 +47,17 @@ describe('checkItems', () => {
     expect(out[0]?.learnCompletionEvidence).toBe('submission');
   });
 
-  it('ticks off a quiz with a finished attempt', async () => {
-    const fetcher = fakeFetcher([['/quizzes/q1/attempts/', { json: [{ AttemptId: 1, Completed: '2026-10-08T15:00:00.000Z' }] }]]);
-    const out = await checkItems(fetcher, '100012', '1.80', [item('q1', 'quiz', NOW + DAY)], NOW);
-    expect(out[0]?.learnCompleted).toBe(true);
+  it('ticks off quizzes the quiz list shows an attempt for, from one page read', async () => {
+    const fetcher = fakeFetcher([['/quizzing/user/quizzes_list.d2l?ou=100012', { text: QUIZ_PAGE }]]);
+    const quizzes = ['501', '502', '503'].map((id) => item(id, 'quiz', NOW + DAY));
+    const out = await checkItems(fetcher, '100012', '1.80', quizzes, NOW);
+    expect(out.map((i) => i.learnCompleted)).toEqual([true, true, false]);
+    expect(fetcher.calls).toHaveLength(1);
+  });
+
+  it('leaves quizzes alone when the quiz list cannot be read', async () => {
+    const out = await checkItems(fakeFetcher([]), '100012', '1.80', [item('q1', 'quiz', NOW + DAY)], NOW);
+    expect(out[0]?.learnCompleted).toBe(false);
   });
 
   it('does not ask about work already done or long past', async () => {
@@ -52,16 +73,14 @@ describe('checkItems', () => {
   });
 });
 
-describe('hasFinishedAttempt', () => {
-  it('counts an attempt with a completion stamp', () => {
-    expect(hasFinishedAttempt({ Objects: [{ AttemptId: 1, Completed: '2026-10-08T15:00:00Z' }] })).toBe(true);
-    expect(hasFinishedAttempt([{ IsSubmitted: true }])).toBe(true);
+describe('parseQuizAttempts', () => {
+  it('reads attempts used per quiz', () => {
+    const used = parseQuizAttempts(QUIZ_PAGE);
+    expect([...used.entries()]).toEqual([['501', 1], ['502', 2], ['503', 0], ['504', 1]]);
   });
 
-  it('does not count an attempt that was opened but never submitted', () => {
-    expect(hasFinishedAttempt([{ AttemptId: 1, Completed: null }])).toBe(false);
-    expect(hasFinishedAttempt([{ AttemptId: 1 }])).toBe(false);
-    expect(hasFinishedAttempt([])).toBe(false);
+  it('skips rows that are not quizzes', () => {
+    expect(parseQuizAttempts('<table><tr><td>Heading</td><td><label>3</label></td></tr></table>').size).toBe(0);
   });
 });
 
@@ -93,5 +112,27 @@ describe('isSubmitClick', () => {
   it('ignores other buttons and plain text', () => {
     expect(isSubmitClick([el('<button>Add a File</button>')])).toBe(false);
     expect(isSubmitClick([el('<p>Submit your work by Friday</p>')])).toBe(false);
+  });
+});
+
+/** Shaped like a LEARN assignment list page row. */
+const folderRow = (id: string, name: string, status: 'submitted' | 'none'): string =>
+  `<tr><th scope="row"><label><strong>${name}</strong></label></th><td class="d_gt">` +
+  (status === 'submitted'
+    ? `<a class="d2l-link" href="/d2l/lms/dropbox/user/folders_history.d2l?db=${id}&amp;grpid=0&amp;ou=100012" title="Submission history">1 Submission, 2 Files</a>`
+    : '<label>Not Submitted</label>') +
+  '</td></tr>';
+
+describe('closed assignment folders', () => {
+  const page = `<table>${folderRow('701', 'Certificate', 'submitted')}${folderRow('702', 'Presentation', 'none')}</table>`;
+
+  it('reads which folders have a submission', () => {
+    expect([...parseSubmittedFolders(page)]).toEqual(['701']);
+  });
+
+  it('falls back to the assignment list when LEARN refuses the direct check', async () => {
+    const fetcher = fakeFetcher([['/dropbox/user/folders_list.d2l?ou=100012', { text: page }]]);
+    const out = await checkItems(fetcher, '100012', '1.80', [item('701', 'dropbox', NOW - DAY), item('702', 'dropbox', NOW - DAY)], NOW);
+    expect(out.map((i) => i.learnCompleted)).toEqual([true, false]);
   });
 });
