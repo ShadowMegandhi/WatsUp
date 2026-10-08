@@ -86,6 +86,39 @@ export const withSubmission = (item: TaskItem, hasSubmission: boolean): TaskItem
     ? { ...item, learnCompleted: true, learnCompletionEvidence: 'submission' }
     : item;
 
+/**
+ * Reads a quiz attempts payload and reports whether any attempt was finished.
+ *
+ * Strict on purpose: an attempt that was opened but never submitted does not
+ * count, so an attempt has to carry a completion stamp. Field names vary
+ * between Brightspace versions, so the usual ones are all accepted; an
+ * attempt carrying none of them is treated as not finished.
+ */
+export const hasFinishedAttempt = (json: unknown): boolean => {
+  for (const row of asArray(json)) {
+    if (row === null || typeof row !== 'object') continue;
+    const attempt = row as Record<string, unknown>;
+    for (const key of FINISHED_KEYS) {
+      const v = attempt[key];
+      if (v === true) return true;
+      if (typeof v === 'string' && v.trim() !== '') return true;
+      if (typeof v === 'number' && v > 0) return true;
+    }
+  }
+  return false;
+};
+
+const FINISHED_KEYS: readonly string[] = [
+  'Completed',
+  'CompletedDate',
+  'DateCompleted',
+  'Submitted',
+  'SubmittedDate',
+  'SubmissionDate',
+  'IsCompleted',
+  'IsSubmitted',
+];
+
 /** Reads a mysubmissions payload and reports whether anything was handed in. */
 export const hasAnySubmission = (json: unknown): boolean => {
   for (const row of asArray(json)) {

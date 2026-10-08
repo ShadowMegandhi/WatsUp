@@ -11,6 +11,7 @@ import { registerRelayPort, hasRelay, relayFetcher } from '@platform/relayHost';
 import { workerFetcher } from '@sync/fetchProxy';
 import { runProbe } from '@sync/probe';
 import { runSync } from '@sync/orchestrator';
+import { recheckCourse } from '@sync/recheck';
 import { resolve } from '@core/status';
 import { attentionCount } from '@core/selectors';
 import {
@@ -27,7 +28,7 @@ import {
   clearDerived,
   writeProbeReportCompat,
 } from '@storage/storeCompat';
-import { dropRetiredKeys } from '@storage/store';
+import { dropRetiredKeys, readApiVersions } from '@storage/store';
 import { grantedOrigins } from '@platform/permissions';
 
 chrome.runtime.onConnect.addListener((port) => {
@@ -124,6 +125,20 @@ const handleCommand = async (command: Command): Promise<CommandReply> => {
 
     case 'get-hosts':
       return { type: 'hosts', origins: await grantedOrigins() };
+
+    case 'recheck-course': {
+      const versions = await readApiVersions();
+      // Without known API versions there has been no sync yet; a normal one
+      // will pick up the submission anyway.
+      if (versions === null) {
+        void sync(false);
+        return { type: 'status', status: await status() };
+      }
+      const fetcher = hasRelay() ? relayFetcher() : workerFetcher();
+      const changed = await recheckCourse(fetcher, command.courseId, versions.le, Date.now());
+      if (changed > 0) await refreshBadge();
+      return { type: 'status', status: await status() };
+    }
 
     case 'probe': {
       const fetcher = hasRelay() ? relayFetcher() : workerFetcher();

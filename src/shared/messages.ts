@@ -54,6 +54,8 @@ export type Command =
   | { readonly type: 'get-status' }
   /** Content scripts cannot read chrome.permissions, so they ask the worker. */
   | { readonly type: 'get-hosts' }
+  /** A LEARN assignment or quiz page loaded: re-check that course's open work now. */
+  | { readonly type: 'recheck-course'; readonly courseId: string }
   /** Throw away derived data and sync again. Keeps ticked-off state. */
   | { readonly type: 'reset-and-sync' };
 

@@ -12,6 +12,7 @@
  */
 
 import { RELAY_PORT_NAME, type RelayRequest } from '@shared/messages';
+import { watchSubmissions } from './submitWatch';
 import { handleRelayRequest } from './fetchRelay';
 import { mountPanel } from './panel/mount';
 
@@ -53,6 +54,11 @@ const start = (): void => {
   // Ask for a sync on arrival. The worker enforces the minimum interval, so
   // opening five LEARN tabs does not mean five syncs.
   void chrome.runtime.sendMessage({ type: 'sync-if-stale' }).catch(() => undefined);
+  // On an assignment or quiz page, re-check that course straight away and
+  // again after a Submit press, so handed-in work ticks itself off.
+  watchSubmissions((courseId) => {
+    void chrome.runtime.sendMessage({ type: 'recheck-course', courseId }).catch(() => undefined);
+  });
 };
 
 if (document.readyState === 'loading') {

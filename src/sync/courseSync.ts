@@ -16,6 +16,7 @@ import { normalizeQuizzes, hasAnySubmission, withSubmission } from '@core/normal
 import { normalizeNews, type Announcement } from '@core/normalize/news';
 import { normalizeCalendarEvents } from '@core/normalize/calendar';
 import { normalizeCourseGrade, normalizeGrades, withGradeEvidence } from '@core/normalize/grades';
+import { checkItems } from './recheck';
 import { LEARN_ORIGIN, MAX_CONCURRENT_PER_COURSE } from '@shared/constants';
 import { addDays } from '@shared/time';
 import type { Course, CourseGrade, GradeEntry, TaskItem } from '@core/types';
@@ -82,10 +83,22 @@ export const syncCourse = async (
   const courseGrade = finalValue.ok ? normalizeCourseGrade(finalValue.value.json, course.id) : null;
 
   const withEvidence = await applySubmissionEvidence(fetcher, course.id, le, assignmentItems, known, now);
+  // Quizzes get the same treatment: a finished attempt ticks the quiz off.
+  // Already-finished ones carry over without asking again.
+  const doneBefore = new Set(known.filter((k) => k.learnCompleted).map((k) => k.id));
+  const quizzesWithEvidence = await checkItems(
+    fetcher,
+    course.id,
+    le,
+    quizItems.map((q) =>
+      doneBefore.has(q.id) ? { ...q, learnCompleted: true, learnCompletionEvidence: 'submission' as const } : q,
+    ),
+    now,
+  );
 
   return ok({
     courseId: course.id,
-    items: [...withGradeEvidence([...withEvidence, ...quizItems], grades ?? []), ...examItems],
+    items: [...withGradeEvidence([...withEvidence, ...quizzesWithEvidence], grades ?? []), ...examItems],
     news: news.ok ? normalizeNews(news.value.json, course.id, LEARN_ORIGIN) : [],
     grades,
     courseGrade,
