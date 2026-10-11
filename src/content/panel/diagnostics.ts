@@ -68,6 +68,7 @@ export const buildDiagnostics = (input: DiagnosticsInput): string => {
   out.push('ITEMS BY SOURCE');
   out.push(`  dropbox:  ${countSource(items, 'dropbox')}`);
   out.push(`  quiz:     ${countSource(items, 'quiz')}`);
+  out.push(`  discussion: ${countSource(items, 'discussion')}`);
   out.push(`  calendar: ${countSource(items, 'calendar')}`);
   out.push(`  syllabus: ${countSource(items, 'syllabus')}`);
   out.push(`  total:    ${items.length}`);

@@ -1,7 +1,7 @@
 # WatsUp (LEARN Tracker)
 
 *What's up at Waterloo.* A Chrome extension that pulls every assignment, quiz,
-exam, returned mark and announcement across your University of Waterloo LEARN
+discussion, exam, returned mark and announcement across your University of Waterloo LEARN
 courses, plus the dated work in your course outlines, into one panel right on
 the LEARN page.
 
@@ -24,7 +24,8 @@ circle), with five tabs:
 
 Both LEARN and your course outlines:
 
-1. **LEARN**: Assignments (Dropbox), Quizzes, and the course calendar.
+1. **LEARN**: Assignments (Dropbox), Quizzes, Discussions with a due date or close date,
+   and exams on the course calendar. A discussion is ticked off once you have posted in it.
 2. **Course outlines** (a PDF or Word file in LEARN, the course Overview page, or
    outline.uwaterloo.ca): quizzes, tests, midterms, labs and other work that has a
    single, exact date written beside it. Anything vaguer ("midterm week", "during the

@@ -135,7 +135,7 @@ const handleCommand = async (command: Command): Promise<CommandReply> => {
         return { type: 'status', status: await status() };
       }
       const fetcher = hasRelay() ? relayFetcher() : workerFetcher();
-      const changed = await recheckCourse(fetcher, command.courseId, versions.le, Date.now());
+      const changed = await recheckCourse(fetcher, command.courseId, versions.le, Date.now(), versions.lp);
       if (changed > 0) await refreshBadge();
       return { type: 'status', status: await status() };
     }

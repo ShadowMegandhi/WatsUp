@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { checkItems } from '@sync/recheck';
+import { checkItems, readUserId } from '@sync/recheck';
 import { parseQuizAttempts, parseSubmittedFolders } from '@core/normalize/quiz';
 import { courseOfWorkPage, isSubmitClick } from '../src/content/submitWatch';
 import { fakeFetcher } from '@test/doubles/fakeFetcher';
@@ -134,5 +134,62 @@ describe('closed assignment folders', () => {
     const fetcher = fakeFetcher([['/dropbox/user/folders_list.d2l?ou=100012', { text: page }]]);
     const out = await checkItems(fetcher, '100012', '1.80', [item('701', 'dropbox', NOW - DAY), item('702', 'dropbox', NOW - DAY)], NOW);
     expect(out.map((i) => i.learnCompleted)).toEqual([true, false]);
+  });
+});
+
+describe('checkItems: discussions', () => {
+  const post = (id: string, done = false): TaskItem =>
+    ({
+      id,
+      courseId: '100012',
+      title: id,
+      kind: 'discussion',
+      dueAt: NOW + DAY,
+      endsAt: null,
+      sources: [{ system: 'discussion', sourceId: '12/456', url: '', observedAt: NOW }],
+      learnCompleted: done,
+      learnCompletionEvidence: done ? 'submission' : 'none',
+    }) as unknown as TaskItem;
+
+  it('ticks off a discussion the student has posted in', async () => {
+    const fetcher = fakeFetcher([
+      ['/discussions/forums/12/topics/456/posts/', { json: [{ PostingUserId: 5 }, { PostingUserId: 42 }] }],
+    ]);
+    const out = await checkItems(fetcher, '100012', '1.80', [post('d1')], NOW, undefined, '42');
+    expect(out[0]?.learnCompleted).toBe(true);
+    expect(fetcher.calls).toEqual(['/d2l/api/le/1.80/100012/discussions/forums/12/topics/456/posts/']);
+  });
+
+  it('leaves a discussion open when nobody matching has posted, or the list cannot be read', async () => {
+    const quiet = await checkItems(
+      fakeFetcher([['/posts/', { json: [{ PostingUserId: 5 }] }]]),
+      '100012', '1.80', [post('d1')], NOW, undefined, '42',
+    );
+    expect(quiet[0]?.learnCompleted).toBe(false);
+
+    const refused = await checkItems(fakeFetcher([]), '100012', '1.80', [post('d1')], NOW, undefined, '42');
+    expect(refused[0]?.learnCompleted).toBe(false);
+  });
+
+  it('asks nothing without a user id', async () => {
+    const fetcher = fakeFetcher([['/posts/', { json: [{ PostingUserId: 42 }] }]]);
+    const out = await checkItems(fetcher, '100012', '1.80', [post('d1')], NOW);
+    expect(out[0]?.learnCompleted).toBe(false);
+    expect(fetcher.calls).toEqual([]);
+  });
+});
+
+describe('readUserId', () => {
+  it('reads the Identifier whoami returns, as a string', async () => {
+    const asString = await readUserId(fakeFetcher([['/users/whoami', { json: { Identifier: '384741', UniqueName: 'x' } }]]), '1.63');
+    const asNumber = await readUserId(fakeFetcher([['/users/whoami', { json: { Identifier: 384741 } }]]), '1.63');
+    expect(asString).toBe('384741');
+    expect(asNumber).toBe('384741');
+  });
+
+  it('is null when whoami fails or answers with something else', async () => {
+    expect(await readUserId(fakeFetcher([]), '1.63')).toBeNull();
+    expect(await readUserId(fakeFetcher([['/users/whoami', { json: null }]]), '1.63')).toBeNull();
+    expect(await readUserId(fakeFetcher([['/users/whoami', { json: { Identifier: 'abc' } }]]), '1.63')).toBeNull();
   });
 });

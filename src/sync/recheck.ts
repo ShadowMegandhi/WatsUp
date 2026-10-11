@@ -20,6 +20,7 @@ import {
   quizListPath,
   withSubmission,
 } from '@core/normalize/quiz';
+import { hasMyPost, splitDiscussionSourceId } from '@core/normalize/discussion';
 import { readItemsFor, writeItemsFor } from '@storage/store';
 import { MAX_CONCURRENT_PER_COURSE } from '@shared/constants';
 import type { Fetcher } from './fetchProxy';
@@ -43,12 +44,20 @@ export const recheckCourse = async (
   courseId: string,
   le: string,
   now: number,
+  lp: string | null = null,
 ): Promise<number> => {
   if (recheckThrottled(courseId, now)) return 0;
   lastRun.set(courseId, now);
 
   const items = await readItemsFor(courseId);
-  const updated = await checkItems(fetcher, courseId, le, items, now);
+
+  // Discussions are ticked off by comparing post authors with the student's
+  // own id, which costs one whoami call, so it is only made when there is an
+  // open discussion to ask about.
+  const anyOpenDiscussion = items.some((i) => !i.learnCompleted && i.sources[0]?.system === 'discussion');
+  const userId = anyOpenDiscussion && lp !== null ? await readUserId(fetcher, lp) : null;
+
+  const updated = await checkItems(fetcher, courseId, le, items, now, LOOKBACK_MS, userId);
 
   const changed = updated.filter((u, i) => u.learnCompleted !== items[i]?.learnCompleted).length;
   if (changed > 0) await writeItemsFor(courseId, updated);
@@ -63,6 +72,7 @@ export const checkItems = async (
   items: readonly TaskItem[],
   now: number,
   lookbackMs: number = LOOKBACK_MS,
+  userId: string | null = null,
 ): Promise<readonly TaskItem[]> => {
   const open = (item: TaskItem): boolean => !item.learnCompleted && isWorthAsking(item, now, lookbackMs);
 
@@ -89,6 +99,17 @@ export const checkItems = async (
 
       if (source.system === 'quiz' && attempts !== null) {
         return withSubmission(item, (attempts.get(source.sourceId) ?? 0) > 0);
+      }
+
+      // A discussion is done once the student has posted in it. Without the
+      // student's id there is nothing to compare against, so it stays open.
+      if (source.system === 'discussion' && userId !== null) {
+        const ref = splitDiscussionSourceId(source.sourceId);
+        if (ref === null) return item;
+        const res = await fetcher.getJson(
+          `/d2l/api/le/${le}/${courseId}/discussions/forums/${ref.forumId}/topics/${ref.topicId}/posts/`,
+        );
+        return res.ok ? withSubmission(item, hasMyPost(res.value.json, userId)) : item;
       }
 
       return item;
@@ -119,6 +140,16 @@ const readQuizAttempts = async (
 ): Promise<ReadonlyMap<string, number> | null> => {
   const res = await fetcher.getText(quizListPath(courseId));
   return res.ok ? parseQuizAttempts(res.value) : null;
+};
+
+/** The signed-in student's LEARN user id, or null when whoami will not say. */
+export const readUserId = async (fetcher: Fetcher, lp: string): Promise<string | null> => {
+  const res = await fetcher.getJson(`/d2l/api/lp/${lp}/users/whoami`);
+  if (!res.ok) return null;
+  const json = res.value.json;
+  const id = json !== null && typeof json === 'object' ? (json as { Identifier?: unknown }).Identifier : undefined;
+  if (typeof id === 'number' && Number.isFinite(id)) return String(id);
+  return typeof id === 'string' && /^[0-9]+$/.test(id) ? id : null;
 };
 
 const isWorthAsking = (item: TaskItem, now: number, lookbackMs: number): boolean => {

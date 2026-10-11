@@ -11,13 +11,14 @@
 
 import { type Result, ok, err } from '@shared/result';
 import { type AppError, isFatal } from '@shared/errors';
-import { normalizeDropboxFolders } from '@core/normalize/dropbox';
+import { normalizeDropboxFolders, asArray, numericId } from '@core/normalize/dropbox';
 import { normalizeQuizzes } from '@core/normalize/quiz';
+import { normalizeDiscussionTopics } from '@core/normalize/discussion';
 import { normalizeNews, type Announcement } from '@core/normalize/news';
 import { normalizeCalendarEvents } from '@core/normalize/calendar';
 import { normalizeCourseGrade, normalizeGrades, withGradeEvidence } from '@core/normalize/grades';
 import { checkItems } from './recheck';
-import { LEARN_ORIGIN } from '@shared/constants';
+import { LEARN_ORIGIN, MAX_CONCURRENT_PER_COURSE } from '@shared/constants';
 import { addDays } from '@shared/time';
 import type { Course, CourseGrade, GradeEntry, TaskItem } from '@core/types';
 import type { Fetcher } from './fetchProxy';
@@ -40,6 +41,7 @@ export const syncCourse = async (
   le: string,
   now: number,
   known: readonly TaskItem[] = [],
+  userId: string | null = null,
 ): Promise<Result<CourseOutput, AppError>> => {
   const failures: string[] = [];
 
@@ -58,6 +60,15 @@ export const syncCourse = async (
   const quizItems = quizzes.ok
     ? normalizeQuizzes(quizzes.value.json, course.id, LEARN_ORIGIN, now)
     : [];
+
+  // Discussions are the one other tool a due date lives in without an
+  // assignment folder or quiz behind it. (Content topics can carry due dates
+  // too, but on UW LEARN the table of contents does not report them, and
+  // walking every module costs up to ~80 calls per course for, when checked,
+  // nothing but links to assignments and quizzes already read above.)
+  const discussions = await fetchDiscussions(fetcher, course.id, le, now);
+  if (discussions.fatal !== null) return err(discussions.fatal);
+  if (discussions.failed) failures.push('discussions');
 
   const news = await fetcher.getJson(`/d2l/api/le/${le}/${course.id}/news/`);
   if (!news.ok && isFatal(news.error)) return news;
@@ -85,12 +96,13 @@ export const syncCourse = async (
   // Submissions do not un-happen, so work already seen as done carries over
   // without asking again. Everything else open is checked the same way the
   // instant re-check after a Submit does: assignments directly (falling back
-  // to the assignment list once a folder closes), quizzes from the quiz list.
+  // to the assignment list once a folder closes), quizzes from the quiz list,
+  // discussions from their post lists.
   const doneBefore = new Set(known.filter((k) => k.learnCompleted).map((k) => k.id));
-  const carried = [...assignmentItems, ...quizItems].map((i) =>
+  const carried = [...assignmentItems, ...quizItems, ...discussions.items].map((i) =>
     doneBefore.has(i.id) ? { ...i, learnCompleted: true, learnCompletionEvidence: 'submission' as const } : i,
   );
-  const withEvidence = await checkItems(fetcher, course.id, le, carried, now, STALE_AFTER_MS);
+  const withEvidence = await checkItems(fetcher, course.id, le, carried, now, STALE_AFTER_MS, userId);
 
   return ok({
     courseId: course.id,
@@ -127,6 +139,53 @@ const fetchCalendar = async (
     if (isFatal(res.error)) return { json: null, fatal: res.error };
   }
   return { json: null, fatal: null };
+};
+
+/**
+ * Reads every discussion topic in the course: the forum list, then each
+ * forum's topics. One forum that will not load costs its topics, not the
+ * course; only a sign-out or rate limit stops everything.
+ */
+const fetchDiscussions = async (
+  fetcher: Fetcher,
+  courseId: string,
+  le: string,
+  now: number,
+): Promise<{ items: readonly TaskItem[]; failed: boolean; fatal: AppError | null }> => {
+  const forums = await fetcher.getJson(`/d2l/api/le/${le}/${courseId}/discussions/forums/`);
+  if (!forums.ok) {
+    if (isFatal(forums.error)) return { items: [], failed: true, fatal: forums.error };
+    // A course with the Discussions tool switched off answers 403 (seen on
+    // UW LEARN) or 404. That is no discussions, not a failure to report.
+    const toolOff = forums.error.kind === 'http' && (forums.error.status === 403 || forums.error.status === 404);
+    return { items: [], failed: !toolOff, fatal: null };
+  }
+
+  const forumIds = asArray(forums.value.json)
+    .map((f) => (f !== null && typeof f === 'object' ? numericId((f as { ForumId?: unknown }).ForumId) : null))
+    .filter((id): id is string => id !== null);
+
+  const items: TaskItem[] = [];
+  let failed = false;
+
+  for (let i = 0; i < forumIds.length; i += MAX_CONCURRENT_PER_COURSE) {
+    const batch = forumIds.slice(i, i + MAX_CONCURRENT_PER_COURSE);
+    const replies = await Promise.all(
+      batch.map((forumId) => fetcher.getJson(`/d2l/api/le/${le}/${courseId}/discussions/forums/${forumId}/topics/`)),
+    );
+
+    for (const [j, reply] of replies.entries()) {
+      const forumId = batch[j] ?? '';
+      if (!reply.ok) {
+        if (isFatal(reply.error)) return { items: [], failed: true, fatal: reply.error };
+        failed = true;
+        continue;
+      }
+      items.push(...normalizeDiscussionTopics(reply.value.json, forumId, courseId, LEARN_ORIGIN, now));
+    }
+  }
+
+  return { items, failed, fatal: null };
 };
 
 /** Far enough to cover a whole term including the final exam period. */

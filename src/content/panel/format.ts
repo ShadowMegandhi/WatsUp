@@ -118,6 +118,7 @@ const shortWeekday = (at: number): string =>
 export const KIND_LABEL: Readonly<Record<string, string>> = {
   assignment: 'Assignment',
   quiz: 'Quiz',
+  discussion: 'Discussion',
   exam: 'Exam',
   test: 'Test',
   lab: 'Lab',

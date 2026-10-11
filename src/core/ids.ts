@@ -10,13 +10,9 @@
  * anchored to a slug of the title with the date deliberately excluded.
  */
 
-import type { TaskId } from './types';
+import type { LearnSystem, TaskId } from './types';
 
-export const learnId = (
-  courseId: string,
-  system: 'dropbox' | 'quiz' | 'calendar',
-  sourceId: string,
-): TaskId =>
+export const learnId = (courseId: string, system: LearnSystem, sourceId: string): TaskId =>
   `learn:${courseId}:${system}:${sourceId}`;
 
 export const syllabusId = (courseId: string, title: string): TaskId =>

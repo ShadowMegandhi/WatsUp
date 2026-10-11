@@ -13,11 +13,21 @@
 /** Stable across re-syncs. Contains only immutable facts, never a date. */
 export type TaskId = string;
 
-export type SourceSystem = 'dropbox' | 'quiz' | 'calendar' | 'syllabus' | 'manual';
+export type SourceSystem =
+  | 'dropbox'
+  | 'quiz'
+  | 'discussion'
+  | 'calendar'
+  | 'syllabus'
+  | 'manual';
+
+/** The LEARN tools items are read from. Everything else is a reading, not a record. */
+export type LearnSystem = Exclude<SourceSystem, 'syllabus' | 'manual'>;
 
 export type TaskKind =
   | 'assignment'
   | 'quiz'
+  | 'discussion'
   | 'exam'
   | 'test'
   | 'lab'

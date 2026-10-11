@@ -15,6 +15,7 @@ import { type AppError, isFatal, userMessage } from '@shared/errors';
 import { discoverVersions, fallbackVersions } from '@d2l/versions';
 import { parseCourses } from './probe';
 import { syncCourse } from './courseSync';
+import { readUserId } from './recheck';
 import { dedupeById } from '@core/dedupe';
 import { LEXICON_VERSION } from '@core/syllabus/lexicon';
 import { syncSyllabus } from './syllabusSync';
@@ -80,6 +81,10 @@ export const runSync = async (
     const courses = toCourses(parseCourses(enrollments.value.json));
     await writeCourses(courses);
 
+    // The student's own id, so a discussion post of theirs can be told from
+    // everyone else's. If LEARN will not say, discussions simply stay unticked.
+    const userId = await readUserId(fetcher, versions.lp);
+
     const previousIds = new Set(await readSeenIds());
     const isFirstEverSync = previousIds.size === 0;
 
@@ -89,7 +94,7 @@ export const runSync = async (
 
     for (const course of courses) {
       const known = await readItemsFor(course.id);
-      const result = await syncCourse(fetcher, course, versions.le, now, known);
+      const result = await syncCourse(fetcher, course, versions.le, now, known, userId);
 
       if (!result.ok) {
         // Only a genuinely global problem stops the whole run.
