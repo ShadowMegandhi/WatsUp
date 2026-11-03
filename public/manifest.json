@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "WatsUp",
   "version": "0.3.0",
-  "description": "What's up at Waterloo: your LEARN deadlines, exams, marks and announcements in one place. Not affiliated with the University of Waterloo.",
+  "description": "What's up at Waterloo: your LEARN deadlines, exams, marks and announcements in one place. Not affiliated with the University.",
   "minimum_chrome_version": "120",
   "permissions": [
     "storage",
