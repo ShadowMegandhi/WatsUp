@@ -35,9 +35,7 @@ extension deletes it.
 |---|---|
 | `storage` | keep your deadlines and marks between browser sessions |
 | `alarms` | refresh in the background on a schedule |
-| `notifications` | remind you of upcoming deadlines |
 | `offscreen` | read PDF and Word course outlines in a hidden document |
-| `idle` | pause background refreshes while you are away |
 | access to `learn.uwaterloo.ca` and `outline.uwaterloo.ca` | the only two sites it reads from |
 
 ## Contact

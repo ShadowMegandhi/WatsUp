@@ -17,3 +17,6 @@ corpus-private/
 
 # dev-only panel preview build (scripts/preview.mjs)
 preview-out/
+
+# Local copies of store-submission zips (the canonical build is the GitHub release)
+release/

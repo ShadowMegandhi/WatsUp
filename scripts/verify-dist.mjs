@@ -35,7 +35,7 @@ for (const size of Object.keys(manifest.action?.default_icon ?? {})) {
 // should be made consciously, because broad permissions are the single biggest
 // driver of Chrome Web Store review friction.
 const ALLOWED_PERMISSIONS = new Set([
-  'storage', 'alarms', 'notifications', 'offscreen', 'idle',
+  'storage', 'alarms', 'offscreen',
 ]);
 // Two hosts, and the README privacy section promises exactly these two.
 // Quest and Portal were dropped in v0.3 along with tutorial placement; adding
