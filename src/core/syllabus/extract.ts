@@ -27,11 +27,10 @@
 
 import type { TaskKind } from '../types';
 import {
-  ASSESSMENT_TERMS,
   CONTEXT_VETO_TERMS,
-  NEGATION_TERMS,
   NOT_A_DEADLINE_TERMS,
   REVIEW_PREFIXES,
+  TOPIC_WORDS,
   UNGRADED_TERMS,
   VETO_TERMS,
   WINDOW_TERMS,
@@ -44,6 +43,20 @@ import {
   type FoundDate,
   type TermContext,
 } from './dates';
+import { placeByContext } from './context';
+import {
+  buildTitle,
+  cellAround,
+  containsWord,
+  findMentions,
+  findPluralMention,
+  isNegated,
+  readWeight,
+  tidy,
+  type Mention,
+} from './mentions';
+
+export { buildTitle, containsWord, readWeight };
 
 export interface Candidate {
   readonly title: string;
@@ -59,9 +72,6 @@ export interface Candidate {
 
 /** A weekday that disagrees with the date drops the format score below this. */
 const MIN_DATE_CONFIDENCE = 0.85;
-
-/** Mentions closer than this are one name ("Midterm Exam", "Midterm Test"). */
-const ADJACENT_GAP = 2;
 
 /** At most this many dates are looked for on one line. */
 const MAX_DATES_PER_LINE = 4;
@@ -82,24 +92,30 @@ export const extractAssessments = (
   const out: Candidate[] = [];
   // A date line lends its date to one name only.
   const claimed = new Set<number>();
+  // Lines already read, which the whole-document pass leaves alone.
+  const used = new Set<number>();
 
   lines.forEach((raw, i) => {
     const direct = readLine(raw, term);
     if (direct.length > 0) {
       out.push(...direct);
+      used.add(i);
       return;
     }
     const split = readSplit(lines, i, term, claimed);
     if (split !== null) {
       claimed.add(split.used);
+      used.add(i).add(split.used);
       out.push(...split.found);
     }
   });
 
-  return disambiguate(dedupe(out));
-};
+  // What no single line dates, the outline as a whole may: a week in the
+  // schedule plus a rule like "quizzes are on Mondays at 5:30".
+  const placed = placeByContext(lines, term, out, used);
 
-const tidy = (raw: string): string => raw.replace(/\s+/g, ' ').trim();
+  return disambiguate(dedupe([...out, ...placed]));
+};
 
 /**
  * A name on one line and its date alone on the next (or the line before).
@@ -196,10 +212,14 @@ export const readLine = (raw: string, term: TermContext): readonly Candidate[] =
   if (VETO_TERMS.some((t) => lower.includes(t))) return [];
 
   const mentions = findMentions(lower).filter((m) => !isNegated(lower, m.at));
-  if (mentions.length === 0) return [];
+  if (mentions.length === 0) return readSeries(line, null, term);
 
   const found = pickDate(line, term);
-  if (found === null) return readEachMention(line, mentions, term);
+  if (found === null) {
+    const each = readEachMention(line, mentions, term);
+    if (each.length > 0 || mentions.length !== 1) return each;
+    return readSeries(line, mentions[0] ?? null, term);
+  }
 
   // With several assessments on one line, a single percentage could belong
   // to any of them, so it is attached only when there is one.
@@ -264,6 +284,60 @@ const readEachMention = (
   return out;
 };
 
+/** A choice of sittings, not a series of quizzes. */
+const SERIES_VETO = /\b(?:or|either|makeup|make-up|alternate|alternative|deferred|rescheduled|conflict)\b/i;
+
+/** A weekly schedule row ("| 7 | Oct 19 | Oct 21 | Quiz |") lists class days. */
+const SCHEDULE_ROW = /^\s*(?:week|wk)\b|^\|?\s*\d{1,2}\s*\|/i;
+
+/** A term has at most this many of one assessment. */
+const MAX_SERIES = 12;
+
+/**
+ * One assessment dated across several columns or a list: "Quizzes | Oct 2 |
+ * Oct 16 | Oct 30", "Tutorial quiz: Sept 25, Oct 9, Oct 23". Each date is
+ * its own item, numbered in order. Refused when the name already carries a
+ * number, when the line offers a choice ("or", "makeup"), and on weekly
+ * schedule rows, whose dates are class days.
+ */
+const readSeries = (line: string, mention: Mention | null, term: TermContext): readonly Candidate[] => {
+  if (SERIES_VETO.test(line) || SCHEDULE_ROW.test(line) || TOPIC_WORDS.test(line)) return [];
+  const name = mention ?? findPluralMention(line.toLowerCase());
+  if (name === null) return [];
+
+  const base = buildTitle(line, name.term, '');
+  if (/\d/.test(base)) return [];
+
+  const dates: FoundDate[] = [];
+  let rest = line;
+  while (dates.length < MAX_SERIES) {
+    const found = findDate(rest, term);
+    if (found === null) break;
+    if (isRange(rest, found.matched)) return [];
+    dates.push(found);
+    rest = rest.replace(found.matched, ' ');
+  }
+  if (dates.length < 2) return [];
+  if (dates.some((d) => d.confidence < MIN_DATE_CONFIDENCE || !withinTerm(d.date, term))) return [];
+  if (!passesScopedRules(line, name.at, (dates[0] as FoundDate).matched)) return [];
+
+  const ordered = [...new Map(dates.map((d) => [dateKey(d.date), d])).values()].sort(
+    (a, b) => toInstant(a.date, 0, 0) - toInstant(b.date, 0, 0),
+  );
+
+  return ordered.map((d, i) => ({
+    title: `${base} ${i + 1}`,
+    kind: name.kind,
+    date: d.date,
+    dueAt: toInstant(d.date, 23, 59),
+    hasTime: false,
+    // A weight beside a series is usually the total for all of them.
+    weightPct: null,
+    sourceLine: line,
+    matchedTerm: name.term,
+  }));
+};
+
 /**
  * The text an assessment is read from. In a table row that is the cell
  * naming it and the cell dating it; elsewhere, the whole line.
@@ -273,12 +347,6 @@ const scopeOf = (line: string, mentionAt: number, dateText: string): string => {
   const fromMention = line.indexOf(dateText, mentionAt);
   const dateAt = fromMention >= 0 ? fromMention : Math.max(0, line.indexOf(dateText));
   return `${cellAround(line, mentionAt)} ${cellAround(line, dateAt)}`;
-};
-
-const cellAround = (line: string, at: number): string => {
-  const start = at > 0 ? line.lastIndexOf('|', at - 1) + 1 : 0;
-  const end = line.indexOf('|', at);
-  return line.slice(start, end < 0 ? line.length : end);
 };
 
 /**
@@ -371,74 +439,6 @@ const isMarkedDue = (line: string, matched: string): boolean => {
   );
 };
 
-interface Mention {
-  readonly term: string;
-  readonly kind: TaskKind;
-  readonly at: number;
-  readonly end: number;
-}
-
-/**
- * Every distinct assessment named on a line.
- *
- * Longest names claim their span first, so "final exam" wins over "exam" and
- * "lab report" over "lab". A shorter name sitting right beside an accepted
- * one is part of the same name ("Midterm Exam", "Midterm Test") and is not
- * a second assessment.
- */
-const findMentions = (lower: string): readonly Mention[] => {
-  const sorted = [...ASSESSMENT_TERMS].sort((a, b) => b.term.length - a.term.length);
-  const accepted: Mention[] = [];
-
-  for (const { term, kind } of sorted) {
-    for (const variant of variantsOf(term)) {
-      let from = 0;
-      for (;;) {
-        const at = containsWord(lower, variant, from);
-        if (at < 0) break;
-        const end = at + variant.length;
-        const clashes = accepted.some(
-          (m) => at < m.end + ADJACENT_GAP && end > m.at - ADJACENT_GAP,
-        );
-        if (!clashes) accepted.push({ term, kind, at, end });
-        from = end;
-      }
-    }
-  }
-
-  return accepted.sort((a, b) => a.at - b.at);
-};
-
-const variantsOf = (term: string): readonly string[] =>
-  term.includes('-') ? [term, term.replace(/-/g, ' ')] : [term];
-
-/**
- * Word-boundary containment without a constructed regex.
- *
- * An index scan with an explicit boundary check avoids escaping lexicon
- * entries into patterns, which is fragile for no benefit.
- */
-const isWordChar = (c: string | undefined): boolean =>
-  c !== undefined && /[a-z0-9]/i.test(c);
-
-export const containsWord = (haystack: string, needle: string, start = 0): number => {
-  let from = start;
-  for (;;) {
-    const at = haystack.indexOf(needle, from);
-    if (at < 0) return -1;
-    const before = haystack[at - 1];
-    const after = haystack[at + needle.length];
-    if (!isWordChar(before) && !isWordChar(after)) return at;
-    from = at + 1;
-  }
-};
-
-/** "No quiz this week" must never produce a quiz. */
-const isNegated = (lower: string, at: number): boolean => {
-  const before = lower.slice(Math.max(0, at - 28), at);
-  return NEGATION_TERMS.some((n) => containsWord(before, n) >= 0);
-};
-
 /**
  * "Oct 20-24" or "Oct 20 to 24" is a window, not a due day. The number
  * after the dash has to be a day: "Oct 23 - 25%" is a date and a weight.
@@ -448,47 +448,6 @@ const isRange = (line: string, matched: string): boolean => {
   if (at < 0) return false;
   const after = line.slice(at + matched.length);
   return /^\s*(?:-|–|—|to|through|until)\s*\d{1,2}(?![\d.]|\s*%)/i.test(after);
-};
-
-export const readWeight = (line: string): number | null => {
-  const m = /(\d{1,3}(?:\.\d+)?)\s*%/.exec(line);
-  if (m === null) return null;
-  const n = Number(m[1]);
-  return Number.isFinite(n) && n > 0 && n <= 100 ? n : null;
-};
-
-/**
- * A short human title. The source line is kept separately and shown in the
- * UI, so this only has to be recognisable.
- */
-export const buildTitle = (line: string, term: string, dateText: string): string => {
-  const withoutDate = line.replace(dateText, ' ').replace(/ +/g, ' ').trim();
-  const base = term.replace(/(^|[ -])([a-z])/g, (_m, sep: string, c: string) => sep + c.toUpperCase());
-
-  const lower = withoutDate.toLowerCase();
-  let at = -1;
-  for (const variant of variantsOf(term)) {
-    at = containsWord(lower, variant);
-    if (at >= 0) break;
-  }
-  if (at < 0) return base;
-
-  // An ordinal counts only right after the name. A number further along is
-  // usually the weight, and "Midterm 25" would be wrong.
-  const rest = withoutDate.slice(at + term.length);
-  const m = /^[ #:.-]{0,4}([0-9]{1,2})(?![0-9%])/.exec(rest);
-  if (m !== null) return base + ' ' + m[1];
-
-  // "Unit 1 - Quiz" numbers the unit, not the quiz, but it is still what
-  // tells this quiz from the others.
-  const before = withoutDate.slice(0, at);
-  const unit = /\b(unit|module|part|chapter|topic)\s*#?\s*([0-9]{1,2})\s*[-–—:|]?\s*$/i.exec(before);
-  if (unit !== null) {
-    const name = (unit[1] ?? '').charAt(0).toUpperCase() + (unit[1] ?? '').slice(1).toLowerCase();
-    return `${name} ${unit[2] ?? ''} ${base}`;
-  }
-
-  return base;
 };
 
 const dateKey = (d: CivilDate): string => `${d.y}-${d.m}-${d.d}`;

@@ -73,6 +73,21 @@ export const ASSESSMENT_TERMS: readonly AssessmentTerm[] = [
   { term: 'discussion post', kind: 'discussion' },
 ];
 
+/** "quiz" to "quizzes", "activity" to "activities", "case study" to "case studies". */
+export const pluralOf = (term: string): string => {
+  if (term.endsWith('quiz')) return `${term}zes`;
+  if (/[^aeiou]y$/.test(term)) return `${term.slice(0, -1)}ies`;
+  if (/(?:s|x|ch|sh)$/.test(term)) return `${term}es`;
+  return `${term}s`;
+};
+
+/**
+ * An assessment named as a class topic rather than a deadline: "Midterm
+ * review", "Project introduction", "Quizzes: lectures Oct 2 and Oct 16".
+ */
+export const TOPIC_WORDS =
+  /\b(?:review|introduction|intro|overview|kick-?off|briefing|info(?:rmation)? session|recap|feedback|solutions?|debrief|preparation|prep|workshop|lectures?|topics?)\b/i;
+
 /**
  * Rows that name an assessment but do not date one. Each is a real pattern:
  * a window rather than a day, or a date the registrar has not set yet.
@@ -233,4 +248,4 @@ export const REVIEW_PREFIXES: readonly string[] = [
  * documents already cached on an existing install. Forgetting this is why a
  * heuristics fix can appear to do nothing.
  */
-export const LEXICON_VERSION = 7;
+export const LEXICON_VERSION = 8;

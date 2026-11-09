@@ -157,8 +157,8 @@ describe('numeric dates', () => {
     expect(titles(['Quiz 1 | 10/10 | worth 5%'])).toEqual([]);
   });
 
-  it('refuses a numeric range rather than picking a day', () => {
-    expect(titles(['Quiz 1 11/13-15'])).toEqual([]);
+  it('lists a numeric range as its week, never as one day', () => {
+    expect(titles(['Quiz 1 11/13-15'])).toEqual(['Quiz 1 (week of Nov 13)']);
     expect(titles(['Quiz 1 11/13 to 11/15'])).toEqual([]);
   });
 

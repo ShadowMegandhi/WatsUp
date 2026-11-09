@@ -102,8 +102,11 @@ export const looksLikeSame = (a: TaskItem, b: TaskItem): boolean => {
 
 const STOP = new Set(['the', 'a', 'of', 'for', 'and', 'due', 'submission', 'exam']);
 
-/** "(Nov 13)", added to tell same-named outline items apart, is not a number. */
-const DATE_SUFFIX = /\s*\((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}\)\s*$/i;
+/**
+ * "(Nov 13)" and "(week of Nov 9)", added to outline titles, are not
+ * numbers that tell one assessment from another.
+ */
+const DATE_SUFFIX = /\s*\((?:week of )?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}\)\s*$/i;
 
 const normalize = (title: string): string =>
   title
