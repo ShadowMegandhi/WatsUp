@@ -358,7 +358,10 @@ const pickDate = (line: string, term: TermContext): FoundDate | null => {
   }
 
   const usable = (d: FoundDate): boolean =>
-    d.confidence >= MIN_DATE_CONFIDENCE && withinTerm(d.date, term) && !isRange(line, d.matched);
+    d.confidence >= MIN_DATE_CONFIDENCE &&
+    withinTerm(d.date, term) &&
+    !isRange(line, d.matched) &&
+    !isDayList(line, d.matched);
 
   if (dates.length === 0) return null;
   if (dates.length === 1) {
@@ -386,6 +389,22 @@ const isMarkedDue = (line: string, matched: string): boolean => {
  * "Oct 20-24" or "Oct 20 to 24" is a window, not a due day. The number
  * after the dash has to be a day: "Oct 23 - 25%" is a date and a weight.
  */
+/**
+ * "Nov 9th, 12th and 13th", "Nov 9, 12 & 13", "Nov 9/12/13": one month and
+ * several days. Only the first day reads as a date by itself, so without
+ * this the line looked like it named one day. It names several, and
+ * picking one would be a guess. A time ("Nov 9, 11:59 pm"), a year
+ * ("Nov 13, 2026") or a weight ("Oct 23, 25%") after the date is not a day.
+ */
+const isDayList = (line: string, matched: string): boolean => {
+  const at = line.indexOf(matched);
+  if (at < 0) return false;
+  const after = line.slice(at + matched.length);
+  return /^\s*(?:,|&|\/|\+|\band\b)\s*(?:and\s+|&\s*)?\d{1,2}(?:st|nd|rd|th)?(?![\d:.]|\s*%|\s*[ap]\.?m\b)/i.test(
+    after,
+  );
+};
+
 const isRange = (line: string, matched: string): boolean => {
   const at = line.indexOf(matched);
   if (at < 0) return false;

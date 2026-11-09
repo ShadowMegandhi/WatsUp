@@ -263,3 +263,20 @@ describe('a realistic mixed outline', () => {
     ]);
   });
 });
+
+describe('a date followed by more day numbers', () => {
+  // "Discussion post: Nov 9th, 12th and 13th" names three days; only the
+  // first carries a month, so it used to read as the 9th alone.
+  it('is a list of days, not one date, and is left out', () => {
+    expect(titles(['Discussion post | Nov 9th, 12th and 13th'])).toEqual([]);
+    expect(titles(['Discussion post: Nov 9, 12 & 13'])).toEqual([]);
+    expect(titles(['Quiz 1 on Nov 9 and 12'])).toEqual([]);
+    expect(titles(['Reflection due Nov 9/12/13'])).toEqual([]);
+  });
+
+  it('still reads a date followed by a time, a year or a weight', () => {
+    expect(dayOf(['Quiz 2 Nov 9, 11:59 pm'])).toEqual(['11/9']);
+    expect(titles(['Assignment 3 due Nov 13, 2026'])).toEqual(['Assignment 3']);
+    expect(titles(['Midterm | Oct 23, 25%'])).toEqual(['Midterm']);
+  });
+});
