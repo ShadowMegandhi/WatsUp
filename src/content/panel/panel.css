@@ -490,6 +490,29 @@
 }
 .name:hover { text-decoration: underline; text-underline-offset: 2px; }
 
+.ownrow { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--faint); }
+.ownremove { all: unset; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; color: var(--soft); }
+.ownremove:hover { color: var(--late); }
+
+.addown { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+.addbtn {
+  all: unset; cursor: pointer;
+  padding: 6px 12px; border-radius: 8px;
+  border: 1px dashed var(--rule-strong);
+  font-size: 12px; font-weight: 650; color: var(--ink);
+}
+.addbtn:hover { border-color: var(--ink); }
+.addform {
+  display: grid; gap: 8px; margin: 0 0 12px; padding: 12px;
+  border: 1px solid var(--rule-strong); border-radius: 12px; background: var(--raise);
+}
+.addhead { font-size: 13px; font-weight: 750; }
+.afield { display: grid; gap: 3px; font-size: 11.5px; color: var(--soft); min-width: 0; }
+.afield .oinput { width: 100%; box-sizing: border-box; }
+.arow { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.acheck { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.aactions { justify-content: flex-end; }
+
 .fromoutline {
   justify-self: start;
   font-size: 11px; color: var(--faint);

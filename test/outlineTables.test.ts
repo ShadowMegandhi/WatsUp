@@ -92,3 +92,42 @@ describe('the week and the rule in different tables', () => {
     expect(read(html)).toEqual([]);
   });
 });
+
+describe('an assessment cell spanning several dated rows', () => {
+  const days =
+    '<tr><td>Mon Oct 19</td><td>Trusses</td><td rowspan="3">Quiz 2</td></tr>' +
+    '<tr><td>Wed Oct 21</td><td>Frames</td></tr>' +
+    '<tr><td>Fri Oct 23</td><td>Beams</td></tr>';
+
+  it('is left out: it covers three days and says none of them', () => {
+    const html = `<table><tr><th>Date</th><th>Topic</th><th>Assessment</th></tr>${days}</table>`;
+    expect(read(html)).toEqual([]);
+  });
+
+  it('is left out when it is a tick under a "Quiz" header', () => {
+    const html =
+      '<table><tr><th>Date</th><th>Topic</th><th>Quiz</th></tr>' +
+      '<tr><td>Mon Oct 19</td><td>Trusses</td><td rowspan="3">✓</td></tr>' +
+      '<tr><td>Wed Oct 21</td><td>Frames</td></tr><tr><td>Fri Oct 23</td><td>Beams</td></tr></table>';
+    expect(read(html)).toEqual([]);
+  });
+
+  it('is placed when a week cell spans the same rows and a rule names the day', () => {
+    const html =
+      '<table><tr><th>Week</th><th>Date</th><th>Topic</th><th>Assessment</th></tr>' +
+      '<tr><td rowspan="3">Week 7 (Oct 19 - 23)</td><td>Mon Oct 19</td><td>Trusses</td><td rowspan="3">Quiz 2</td></tr>' +
+      '<tr><td>Wed Oct 21</td><td>Frames</td></tr><tr><td>Fri Oct 23</td><td>Beams</td></tr></table>' +
+      RULES;
+    expect(read(html)).toEqual(['Quiz 2 10/19 17:30']);
+  });
+});
+
+describe('one numbered assessment given two different dates', () => {
+  it('is left out rather than picking one', () => {
+    expect(extractAssessments(['Quiz 2 | Oct 19', 'Quiz 2 | Oct 21'], FALL)).toEqual([]);
+  });
+
+  it('still keeps two separately dated unnumbered quizzes', () => {
+    expect(extractAssessments(['Oct 5 - Quiz', 'Oct 19 - Quiz'], FALL)).toHaveLength(2);
+  });
+});

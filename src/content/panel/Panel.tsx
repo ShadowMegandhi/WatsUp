@@ -22,6 +22,7 @@ import {
   type PanelPrefs,
   readCourses,
   readAllItems,
+  removeCustomItem,
   readOverrides,
   readPanelPrefs,
   readSyncState,
@@ -394,6 +395,11 @@ export const Panel = () => {
             showCompleted={prefs.showCompleted}
             onShowCompleted={(show) => void setPref({ showCompleted: show })}
             onToggle={onToggle}
+            courses={shownCourses}
+            onAdded={load}
+            onRemove={(t) => {
+              void removeCustomItem(t.item.id).then(load);
+            }}
           />
         )}
 

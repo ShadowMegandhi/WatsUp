@@ -4,15 +4,20 @@
  * Three things a table says through its structure, not its text, that a
  * line-by-line reader would otherwise lose:
  *
- *   1. A cell spanning rows ("rowspan") belongs to every row it covers. A
- *      schedule that writes "Week 7, Oct 19 - 23" once beside three rows
- *      means each of those rows is in week 7.
+ *   1. A label cell spanning rows ("rowspan") belongs to every row it
+ *      covers. A schedule that writes "Week 7, Oct 19 - 23" once beside
+ *      three rows means each of those rows is in week 7.
  *   2. A column header names what is under it. "2" under a "Quiz" header is
  *      Quiz 2; a tick under it means a quiz that row.
  *   3. Where a table ends. A week label inside one table says nothing about
  *      the rows of the next.
  *
- * Each is read from the table itself; nothing is inferred beyond it.
+ * An assessment cell spanning several rows is the opposite case: "Quiz 2"
+ * beside Monday, Wednesday and Friday says the quiz is somewhere in those
+ * days, not on each of them. It is never copied into a dated row. It is
+ * kept on a row of its own with only the cells spanning the same rows (a
+ * week label), so a stated weekly rule can still give it a day, and it is
+ * otherwise left out.
  */
 
 import { findMentions, findPluralMention, variantsOf } from './mentions';
@@ -33,9 +38,22 @@ const MAX_SPAN = 20;
 /** A column header naming an assessment is a short label, not a sentence. */
 const MAX_HEADER = 30;
 
-interface Cell {
+interface RawCell {
   readonly html: string;
   readonly isHeader: boolean;
+  readonly down: number;
+  readonly across: number;
+}
+
+interface Row {
+  readonly cells: readonly string[];
+  /** A row built from held-back assessment cells, already labelled. */
+  readonly held: boolean;
+}
+
+interface Label {
+  readonly col: number;
+  readonly term: string;
 }
 
 const span = (attrs: string, name: 'rowspan' | 'colspan'): number => {
@@ -52,41 +70,15 @@ export const cellText = (html: string): string =>
     .replace(/\s+/g, ' ')
     .trim();
 
-/** Rows with every spanned cell copied into each row it covers. */
-const expandRows = (tableHtml: string): readonly (readonly Cell[])[] => {
-  const pending: ({ cell: Cell; left: number } | undefined)[] = [];
-  const rows: Cell[][] = [];
-
-  for (const row of tableHtml.matchAll(ROW)) {
-    const out: Cell[] = [];
-    let col = 0;
-    const fillSpanned = (): void => {
-      for (let p = pending[col]; p !== undefined && p.left > 0; p = pending[col]) {
-        out.push(p.cell);
-        p.left -= 1;
-        col += 1;
-      }
-    };
-
-    for (const c of (row[1] ?? '').matchAll(CELL)) {
-      fillSpanned();
-      const cell: Cell = { html: c[3] ?? '', isHeader: (c[1] ?? '').toLowerCase() === 'th' };
-      const down = span(c[2] ?? '', 'rowspan');
-      const across = span(c[2] ?? '', 'colspan');
-      for (let k = 0; k < across; k += 1) {
-        // The text sits in the first column only; the rest keep columns lined up.
-        const placed = k === 0 ? cell : { html: '', isHeader: cell.isHeader };
-        out.push(placed);
-        pending[col] = down > 1 ? { cell: placed, left: down - 1 } : undefined;
-        col += 1;
-      }
-    }
-    fillSpanned();
-    rows.push(out);
-  }
-
-  return rows;
-};
+const parseRows = (tableHtml: string): readonly (readonly RawCell[])[] =>
+  [...tableHtml.matchAll(ROW)].map((row) =>
+    [...(row[1] ?? '').matchAll(CELL)].map((c) => ({
+      html: c[3] ?? '',
+      isHeader: (c[1] ?? '').toLowerCase() === 'th',
+      down: span(c[2] ?? '', 'rowspan'),
+      across: span(c[2] ?? '', 'colspan'),
+    })),
+  );
 
 /** A tick, a cross or a yes in a column: "this row has one". */
 const MARK = /^(?:✓|✔|☑|x|yes|y|\*|•)$/i;
@@ -111,16 +103,18 @@ const headerTerm = (text: string): string | null => {
  * A header row is the first row, when it has header cells or no digits at
  * all ("Week | Date | Topic | Quiz").
  */
-const labelledColumn = (rows: readonly (readonly Cell[])[]): { col: number; term: string } | null => {
-  const head = rows[0];
+const labelledColumn = (head: readonly RawCell[] | undefined): Label | null => {
   if (head === undefined) return null;
-  const texts = head.map((c) => cellText(c.html));
-  const looksLikeHeader = head.some((c) => c.isHeader) || texts.every((t) => !/\d/.test(t));
+  const columns: { text: string; isHeader: boolean }[] = [];
+  for (const cell of head) {
+    columns.push({ text: cellText(cell.html), isHeader: cell.isHeader });
+    for (let k = 1; k < cell.across; k += 1) columns.push({ text: '', isHeader: cell.isHeader });
+  }
+  const looksLikeHeader = columns.some((c) => c.isHeader) || columns.every((c) => !/\d/.test(c.text));
   if (!looksLikeHeader) return null;
 
-  const found = texts.map((t, col) => ({ col, term: headerTerm(t) })).filter((h) => h.term !== null);
-  if (found.length !== 1) return null;
-  const only = found[0];
+  const found = columns.map((c, col) => ({ col, term: headerTerm(c.text) })).filter((h) => h.term !== null);
+  const only = found.length === 1 ? found[0] : undefined;
   return only === undefined || only.term === null ? null : { col: only.col, term: only.term };
 };
 
@@ -140,16 +134,87 @@ const labelCell = (html: string, term: string): string => {
   return `${name}: ${html}`;
 };
 
-const rebuild = (rows: readonly (readonly Cell[])[], label: { col: number; term: string } | null): string => {
-  const body = rows
-    .map((row, r) => {
-      const cells = row.map((cell, col) => {
-        const html = label !== null && r > 0 && col === label.col ? labelCell(cell.html, label.term) : cell.html;
-        return `<td>${html}</td>`;
-      });
-      return `<tr>${cells.join('')}</tr>`;
-    })
-    .join('');
+/** The cell as read, with its column's label applied to body rows. */
+const asRead = (html: string, col: number, isBody: boolean, label: Label | null): string =>
+  label !== null && isBody && col === label.col ? labelCell(html, label.term) : html;
+
+const namesWork = (html: string): boolean => {
+  const lower = cellText(html).toLowerCase();
+  return findMentions(lower).length > 0 || findPluralMention(lower) !== null;
+};
+
+interface Pending {
+  readonly html: string;
+  left: number;
+}
+
+interface Held {
+  readonly html: string;
+  readonly companions: readonly string[];
+  left: number;
+}
+
+/**
+ * Rows with spanned label cells copied into each row they cover, and
+ * spanned assessment cells held back onto a row of their own.
+ */
+const expandRows = (raw: readonly (readonly RawCell[])[], label: Label | null): readonly Row[] => {
+  const pending: (Pending | undefined)[] = [];
+  const held: Held[] = [];
+  const rows: Row[] = [];
+
+  raw.forEach((rawRow, r) => {
+    const out: string[] = [];
+    const startedHere: { html: string; down: number; work: boolean }[] = [];
+    let col = 0;
+
+    const fillSpanned = (): void => {
+      for (let p = pending[col]; p !== undefined && p.left > 0; p = pending[col]) {
+        out.push(p.html);
+        p.left -= 1;
+        col += 1;
+      }
+    };
+
+    for (const cell of rawRow) {
+      fillSpanned();
+      const html = asRead(cell.html, col, r > 0, label);
+      const work = cell.down > 1 && cellText(html) !== '' && namesWork(html);
+      for (let k = 0; k < cell.across; k += 1) {
+        // A held assessment leaves its covered rows blank; a label fills them.
+        const placed = k === 0 && !work ? html : '';
+        out.push(placed);
+        pending[col] = cell.down > 1 ? { html: placed, left: cell.down - 1 } : undefined;
+        col += 1;
+      }
+      startedHere.push({ html, down: cell.down, work });
+    }
+    fillSpanned();
+    rows.push({ cells: out, held: false });
+
+    for (const s of startedHere.filter((x) => x.work)) {
+      const companions = startedHere.filter((x) => !x.work && x.down >= s.down).map((x) => x.html);
+      held.push({ html: s.html, companions, left: s.down - 1 });
+    }
+
+    // A held assessment gets its own row once the rows it spans are done.
+    for (const h of held) {
+      if (h.left === 0) rows.push({ cells: [...h.companions, h.html], held: true });
+    }
+    for (let i = held.length - 1; i >= 0; i -= 1) {
+      const h = held[i] as Held;
+      if (h.left === 0) held.splice(i, 1);
+      else h.left -= 1;
+    }
+  });
+
+  // A span running past the table's last row still ends with the table.
+  for (const h of held) rows.push({ cells: [...h.companions, h.html], held: true });
+  return rows;
+};
+
+const rebuild = (rows: readonly Row[]): string => {
+  const body = rows.map((row) => `<tr>${row.cells.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('');
   return `<p>${TABLE_START}</p>${body}<p>${TABLE_END}</p>`;
 };
 
@@ -158,8 +223,8 @@ export const normalizeTables = (html: string): string => {
   let out = html;
   for (let pass = 0; pass < MAX_NESTING; pass += 1) {
     const next = out.replace(INNERMOST_TABLE, (_whole, inner: string) => {
-      const rows = expandRows(inner);
-      return rows.length === 0 ? ' ' : rebuild(rows, labelledColumn(rows));
+      const raw = parseRows(inner);
+      return raw.length === 0 ? ' ' : rebuild(expandRows(raw, labelledColumn(raw[0])));
     });
     if (next === out) break;
     out = next;

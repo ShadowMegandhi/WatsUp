@@ -6,7 +6,8 @@
  */
 
 import { shortCourseLabel } from '@core/courseColor';
-import type { ResolvedTask } from '@core/types';
+import type { Course, ResolvedTask } from '@core/types';
+import { AddOwn } from './AddOwn';
 import { colorVars } from './courseStyle';
 import { countdown, KIND_LABEL, relativeDay, timeOf } from './format';
 import { groupByDay, nextUpDay } from './groups';
@@ -20,6 +21,9 @@ type TodoProps = {
   showCompleted: boolean;
   onShowCompleted: (show: boolean) => void;
   onToggle: (t: ResolvedTask) => void;
+  courses: readonly Course[];
+  onAdded: () => Promise<void>;
+  onRemove: (t: ResolvedTask) => void;
 };
 
 export function TodoView({
@@ -30,6 +34,9 @@ export function TodoView({
   showCompleted,
   onShowCompleted,
   onToggle,
+  courses,
+  onAdded,
+  onRemove,
 }: TodoProps) {
   const groups = groupByDay(tasks, now);
   const next = searching ? [] : nextUpDay(tasks, now);
@@ -45,11 +52,20 @@ export function TodoView({
   // assignment listed in two LEARN tools), and a duplicate key makes Preact
   // drop one of them from the list without a word.
   const row = (t: ResolvedTask, i: number) => (
-    <Row key={`${t.item.id}#${i}`} task={t} isNew={newIds.has(t.item.id)} now={now} onToggle={onToggle} />
+    <Row
+      key={`${t.item.id}#${i}`}
+      task={t}
+      isNew={newIds.has(t.item.id)}
+      now={now}
+      onToggle={onToggle}
+      onRemove={onRemove}
+    />
   );
 
   return (
     <div class="todo">
+      <AddOwn courses={courses} now={now} onAdded={onAdded} />
+
       {next.length > 0 && <NextUp tasks={next} now={now} />}
 
       {groups.length === 0 && <Empty copy={empty} />}

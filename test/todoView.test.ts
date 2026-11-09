@@ -34,6 +34,9 @@ const mount = (tasks: readonly ResolvedTask[]): HTMLElement => {
       showCompleted: false,
       onShowCompleted: () => undefined,
       onToggle: () => undefined,
+      courses: [],
+      onAdded: () => Promise.resolve(),
+      onRemove: () => undefined,
     }),
     el,
   );

@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { shortCourseLabel } from '@core/courseColor';
+import { isCustomItem } from '@core/customItems';
 import type { Course, ResolvedTask } from '@core/types';
 import { colorVars } from './courseStyle';
 import { formatDueShort, KIND_LABEL, urgency } from './format';
@@ -19,10 +20,13 @@ type RowProps = {
   isNew: boolean;
   now: number;
   onToggle: (t: ResolvedTask) => void;
+  /** Given for dates the student added, which they can also take away. */
+  onRemove?: (t: ResolvedTask) => void;
 };
 
-export function Row({ task, isNew, now, onToggle }: RowProps) {
+export function Row({ task, isNew, now, onToggle, onRemove }: RowProps) {
   const done = task.status === 'completed';
+  const isOwn = isCustomItem(task.item);
   // The exact outline line is kept so a reading can be checked, not trusted.
   const syllabusSource = task.item.sources.find((s) => s.system === 'syllabus');
   const outlineLine = syllabusSource === undefined ? null : (syllabusSource.detail?.rawLine ?? '');
@@ -62,6 +66,22 @@ export function Row({ task, isNew, now, onToggle }: RowProps) {
         {outlineLine !== null && (
           <span class="fromoutline" title={`From your course outline: "${outlineLine}"`}>
             From course outline
+          </span>
+        )}
+
+        {isOwn && (
+          <span class="ownrow">
+            Added by you
+            {onRemove !== undefined && (
+              <button
+                type="button"
+                class="ownremove"
+                aria-label={`Remove "${task.effectiveTitle}"`}
+                onClick={() => onRemove(task)}
+              >
+                Remove
+              </button>
+            )}
           </span>
         )}
 

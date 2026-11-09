@@ -112,7 +112,7 @@ export const extractAssessments = (
   // schedule plus a rule like "quizzes are on Mondays at 5:30".
   const placed = placeByContext(lines, term, out, used);
 
-  return disambiguate(dedupe([...out, ...placed]));
+  return disambiguate(dropConflicts(dedupe([...out, ...placed])));
 };
 
 /**
@@ -126,6 +126,9 @@ const readSplit = (
   claimed: ReadonlySet<number>,
 ): { found: readonly Candidate[]; used: number } | null => {
   const line = tidy(lines[i] ?? '');
+  // A table row is whole on its own: its date is in its own cells or it has
+  // none. Pairing is only for text a page or PDF wrapped across lines.
+  if (line.includes('|')) return null;
   if (line.length > MAX_NAME_LINE || findDate(line, term) !== null) return null;
 
   const lower = line.toLowerCase();
@@ -182,7 +185,7 @@ const pairingOrder = (
 
 /** "Friday, November 13", "Due: Nov 13 at 11:59 pm", and nothing more. */
 const isBareDateLine = (line: string, term: TermContext): boolean => {
-  if (line === '') return false;
+  if (line === '' || line.includes('|')) return false;
   const found = findDate(line, term);
   if (found === null) return false;
   if (findMentions(line.toLowerCase()).length > 0) return false;
@@ -439,6 +442,26 @@ const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep
  * different days would collapse into one. When a title repeats with
  * different dates, each copy gets its date in the title to keep them apart.
  */
+/**
+ * One numbered assessment given two different dates ("Quiz 2" on Oct 19 and
+ * on Oct 21) is a contradiction, and picking one would be a guess, so every
+ * copy is left out. Unnumbered names are different: "Oct 5 - Quiz" and
+ * "Oct 19 - Quiz" each date their own quiz.
+ */
+const dropConflicts = (items: readonly Candidate[]): readonly Candidate[] => {
+  const datesByTitle = new Map<string, Set<string>>();
+  for (const c of items) {
+    if (numberIn(c.title) === null) continue;
+    const key = `${c.kind}:${c.title.toLowerCase()}`;
+    const set = datesByTitle.get(key) ?? new Set<string>();
+    set.add(dateKey(c.date));
+    datesByTitle.set(key, set);
+  }
+  return items.filter(
+    (c) => (datesByTitle.get(`${c.kind}:${c.title.toLowerCase()}`)?.size ?? 0) <= 1,
+  );
+};
+
 const disambiguate = (items: readonly Candidate[]): readonly Candidate[] => {
   const datesByTitle = new Map<string, Set<string>>();
   for (const c of items) {

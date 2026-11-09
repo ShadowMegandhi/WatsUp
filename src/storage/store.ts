@@ -35,6 +35,7 @@ const K = {
   seen: 'seenItemIds',
   outlineLinks: 'outlineLinks',
   outlineTexts: 'outlineTexts',
+  customItems: 'customItems',
 } as const;
 
 const area = (): chrome.storage.LocalStorageArea => chrome.storage.local;
@@ -75,10 +76,11 @@ export const readItemsFor = (courseId: string): Promise<readonly TaskItem[]> =>
 export const writeItemsFor = (courseId: string, items: readonly TaskItem[]): Promise<boolean> =>
   set({ [K.items(courseId)]: items });
 
+/** Every item: what sync read for each course, plus dates the student added. */
 export const readAllItems = async (): Promise<readonly TaskItem[]> => {
   const courses = await readCourses();
   const perCourse = await Promise.all(courses.map((c) => readItemsFor(c.id)));
-  return perCourse.flat();
+  return [...perCourse.flat(), ...(await readCustomItems())];
 };
 
 // --- overrides: user-owned, never written by sync --------------------------
@@ -283,6 +285,20 @@ export const writeOutlineText = async (courseId: string, text: string | null): P
   return saved;
 };
 
+// --- dates the student added ------------------------------------------------
+
+/**
+ * Kept apart from synced items so a sync can never overwrite or drop them.
+ * Owned by the user, like overrides.
+ */
+export const readCustomItems = (): Promise<readonly TaskItem[]> => get<readonly TaskItem[]>(K.customItems, []);
+
+export const addCustomItems = async (items: readonly TaskItem[]): Promise<boolean> =>
+  set({ [K.customItems]: [...(await readCustomItems()), ...items] });
+
+export const removeCustomItem = async (id: string): Promise<boolean> =>
+  set({ [K.customItems]: (await readCustomItems()).filter((i) => i.id !== id) });
+
 // --- retired keys --------------------------------------------------------
 
 /**
@@ -311,7 +327,14 @@ export const dropRetiredKeys = async (): Promise<void> => {
  */
 export const clearDerived = async (): Promise<void> => {
   const all = await area().get(null);
-  const keep = new Set<string>([K.overrides, K.panel, K.schemaVersion, K.outlineLinks, K.outlineTexts]);
+  const keep = new Set<string>([
+    K.overrides,
+    K.panel,
+    K.schemaVersion,
+    K.outlineLinks,
+    K.outlineTexts,
+    K.customItems,
+  ]);
 
   const doomed = Object.keys(all).filter((key) => !keep.has(key));
   if (doomed.length > 0) await area().remove(doomed);
