@@ -11,10 +11,13 @@
  *   - A week number or a week's date span places an assessment in a week.
  *   - A weekly rule for that kind of assessment ("quizzes ... Mondays")
  *     picks the day, and its time if it gives one.
- *   - With no rule, the item is still listed, at the start of its week and
- *     titled "(week of ...)", so nothing on the outline goes missing.
+ *   - With no rule naming its day, the item is left out: a week is several
+ *     dates, and picking one would be a guess.
+ *   - Only weeks the outline itself dates are used; weeks are never counted
+ *     forward from another one.
  *   - A rule naming two different days picks nothing, and a written date
  *     for the same assessment always wins over a placed one.
+ *   - A week label applies to the rows under it in its own table only.
  *
  * Every placed item keeps the lines it came from, so the panel can show
  * exactly what it was read from.
@@ -22,6 +25,7 @@
 
 import type { TaskKind } from '../types';
 import type { Candidate } from './extract';
+import { TABLE_END, TABLE_START } from './tables';
 import {
   ASSESSMENT_TERMS,
   CONTEXT_VETO_TERMS,
@@ -169,19 +173,8 @@ export const buildWeekMap = (lines: readonly string[], term: TermContext): Reado
   return map;
 };
 
-/** Week n's Monday, counted from the nearest week the outline dates. */
-const mondayOfWeek = (map: ReadonlyMap<number, CivilDate>, n: number): CivilDate | null => {
-  const exact = map.get(n);
-  if (exact !== undefined) return exact;
-
-  let best: number | null = null;
-  for (const k of map.keys()) {
-    if (best === null || Math.abs(k - n) < Math.abs(best - n)) best = k;
-  }
-  if (best === null) return null;
-  const anchor = map.get(best) as CivilDate;
-  return addDays(anchor, 7 * (n - best));
-};
+/** Week n's Monday, only when the outline dates that week itself. */
+const mondayOfWeek = (map: ReadonlyMap<number, CivilDate>, n: number): CivilDate | null => map.get(n) ?? null;
 
 // --- weekly rules ------------------------------------------------------------
 
@@ -334,8 +327,6 @@ const alreadyDated = (known: readonly Candidate[], kind: TaskKind, title: string
   });
 };
 
-const label = (d: CivilDate): string => `${MONTH_ABBR[d.m - 1]} ${d.d}`;
-
 /** The week a line is about, from the line itself or the heading above it. */
 const weekFor = (
   line: string,
@@ -371,14 +362,22 @@ const ownText = (line: string, mentions: readonly Mention[], k: number): string 
   return line.slice(at, Math.min(next, cellEnd < 0 ? line.length : cellEnd));
 };
 
-/** The rule's weekday inside the week, or the week's first day without one. */
-const place = (span: Span, rule: Rule | null): { date: CivilDate; rule: Rule | null } => {
-  if (rule === null) return { date: span.start, rule: null };
+/**
+ * The rule's weekday inside the week, or null. With no rule, or a rule day
+ * outside the week's dates (a short week), there is no one day to give.
+ */
+const place = (span: Span, rule: Rule | undefined): CivilDate | null => {
+  if (rule === undefined) return null;
   const day = addDays(mondayOf(span.start), (rule.weekday + 6) % 7);
-  // The rule's day falls outside this week's classes (a short week): list
-  // the week instead of inventing a day.
-  return within(day, span) ? { date: day, rule } : { date: span.start, rule: null };
+  return within(day, span) ? day : null;
 };
+
+/**
+ * A line that only labels a week ("Week 7 (Oct 19 - 23)", a table row
+ * "| 7 | Oct 19 - 23 |") sets the week for the lines under it.
+ */
+const labelsAWeek = (line: string, term: TermContext): boolean =>
+  findMentions(line.toLowerCase()).length === 0 && (HEADING.test(line) || (line.includes('|') && weekOfHeading(line) !== null) || (line.includes('|') && readSpan(line, term) !== null && cellsOf(line).length <= 3));
 
 /**
  * Assessments the line reader could not date, placed by week and rule.
@@ -402,8 +401,13 @@ export const placeByContext = (
     const line = tidy(raw);
     const lower = line.toLowerCase();
 
+    // A table's week labels stop at the end of that table.
+    if (line === TABLE_START || line === TABLE_END) {
+      heading = null;
+      return;
+    }
     // A heading sets the week for the lines under it, until the next one.
-    if (HEADING.test(line)) heading = headingSpan(line, map, term);
+    if (labelsAWeek(line, term)) heading = headingSpan(line, map, term);
 
     // A line the line reader already used can still hold another name with
     // no date of its own: "Midterm: Nov 2 at 5pm ... Lab 6: functions".
@@ -425,17 +429,18 @@ export const placeByContext = (
       const title = buildTitle(own, mention.term, '');
       if (alreadyDated([...direct, ...out], mention.kind, title, week)) return;
 
-      const placed = place(week, rules.find((r) => r.kind === mention.kind) ?? null);
-      if (!withinTerm(placed.date, term)) return;
+      const rule = rules.find((r) => r.kind === mention.kind);
+      const day = place(week, rule);
+      if (day === null || rule === undefined || !withinTerm(day, term)) return;
 
       out.push({
-        title: placed.rule === null ? `${title} (week of ${label(week.start)})` : title,
+        title,
         kind: mention.kind,
-        date: placed.date,
-        dueAt: toInstant(placed.date, placed.rule?.h ?? 23, placed.rule?.m ?? 59),
-        hasTime: placed.rule !== null && placed.rule.h !== null,
+        date: day,
+        dueAt: toInstant(day, rule.h ?? 23, rule.m ?? 59),
+        hasTime: rule.h !== null,
         weightPct: readWeight(own),
-        sourceLine: placed.rule === null ? line : `${line} · ${placed.rule.line}`,
+        sourceLine: `${line} · ${rule.line}`,
         matchedTerm: mention.term,
       });
     });

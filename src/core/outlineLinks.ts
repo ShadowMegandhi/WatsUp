@@ -81,7 +81,8 @@ const HAS_STRUCTURE = /<\s*(?:table|tr|td|th|p|li|br|div|h[1-6])\b/i;
 
 /**
  * Copied page markup with everything but its structure removed: no scripts,
- * styles or comments, and no attributes on any tag. What is left is small
+ * styles or comments, and no attributes on any tag except row and column
+ * spans. What is left is small
  * and is exactly what keeps a table row on one line when it is read.
  */
 export const slimPastedHtml = (html: string): string =>
@@ -90,7 +91,13 @@ export const slimPastedHtml = (html: string): string =>
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<(meta|link|img|svg|input|button)[^>]*>/gi, ' ')
-    .replace(/<(\/?)([a-z][a-z0-9]*)\b[^>]*>/gi, '<$1$2>')
+    .replace(/<(\/?)([a-z][a-z0-9]*)\b([^>]*)>/gi, (_m, slash: string, tag: string, attrs: string) => {
+      // Spans are kept: they say which rows a week or date cell belongs to.
+      const spans = [...attrs.matchAll(/\b(rowspan|colspan)\s*=\s*["']?(\d+)/gi)]
+        .map((a) => ` ${(a[1] ?? '').toLowerCase()}="${a[2] ?? ''}"`)
+        .join('');
+      return `<${slash}${tag}${slash === '' ? spans : ''}>`;
+    })
     .replace(/[ \t]+/g, ' ')
     .trim();
 

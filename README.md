@@ -29,13 +29,14 @@ Both LEARN and your course outlines:
 2. **Course outlines** (a PDF or Word file in LEARN, the course Overview page,
    outline.uwaterloo.ca, or outline text you paste on the Courses tab): quizzes,
    tests, midterms, labs, activities, tasks, worksheets and other work that has a
-   date written beside it or on the line right below it. The outline is also read
-   as a whole: a quiz the schedule puts in week 7, plus "quizzes are on Mondays at
-   5:30" elsewhere, becomes a quiz on that Monday at 5:30. A quiz listed against
-   several dates becomes one quiz per date. Work placed in a week with no day
-   given is listed for the start of that week. Anything set by the registrar or
-   "TBA" is left out. These are tagged *From course outline*, and hovering the tag
-   shows the exact lines they came from.
+   date written beside it or on the line right below it. Tables are read as
+   tables: a week or date cell spanning several rows counts for each of them,
+   and a "Quiz" column header labels the numbers or ticks under it. A quiz the
+   schedule only puts in a week is listed only when the outline also says which
+   day ("quizzes are on Mondays at 5:30"); otherwise it is left out, as is
+   anything with several possible dates, set by the registrar, or "TBA". These
+   are tagged *From course outline*, and hovering the tag shows the exact lines
+   they came from.
 
 When LEARN and an outline both list the same thing, LEARN's copy wins, because its
 dates are the live ones.

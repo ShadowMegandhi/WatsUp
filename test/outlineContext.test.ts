@@ -49,14 +49,19 @@ describe('a weekly rule and a week in the schedule', () => {
     expect(read(lines)).toEqual([{ title: 'Lab 4', when: '11/13 23:59' }]);
   });
 
-  it('counts weeks forward from the one the outline dates', () => {
+  it('does not count weeks the outline never dates', () => {
     const lines = ['| 1 | Sept 8 - 11 | Introduction |', 'Quiz 2 in week 4', 'Quizzes are on Mondays'];
+    expect(read(lines)).toEqual([]);
+  });
+
+  it('reads a week the outline does date, from prose elsewhere', () => {
+    const lines = ['| 4 | Sept 28 - Oct 2 | Kinematics |', 'Quiz 2 in week 4', 'Quizzes are on Mondays'];
     expect(read(lines)).toEqual([{ title: 'Quiz 2', when: '9/28' }]);
   });
 
   it('applies a rule only to its own kind', () => {
     const lines = ['Labs are due Fridays at 11:59 pm', '| 7 | Oct 19 - 23 | Quiz 3 |'];
-    expect(read(lines)).toEqual([{ title: 'Quiz 3 (week of Oct 19)', when: '10/19' }]);
+    expect(read(lines)).toEqual([]);
   });
 
   it('lets a written date win over the week', () => {
@@ -66,7 +71,7 @@ describe('a weekly rule and a week in the schedule', () => {
 });
 
 describe('what the reviewers caught', () => {
-  it('places a quiz in a week that crosses a month', () => {
+  it('places a quiz in a week that crosses a month, on its stated day', () => {
     expect(read(['| 8 | Oct 26 - Nov 1 | Quiz 3 |', 'Quizzes are on Fridays'])).toEqual([
       { title: 'Quiz 3', when: '10/30' },
     ]);
@@ -87,13 +92,13 @@ describe('what the reviewers caught', () => {
 });
 
 describe('a week with no rule for the day', () => {
-  it('still lists the item, for the start of its week', () => {
-    expect(read(['| 7 | Oct 19 - 23 | Quiz 3 |'])).toEqual([{ title: 'Quiz 3 (week of Oct 19)', when: '10/19' }]);
+  it('leaves it out: a week is several dates, and picking one is a guess', () => {
+    expect(read(['| 7 | Oct 19 - 23 | Quiz 3 |'])).toEqual([]);
   });
 
   it('does not take a rule naming two days', () => {
     const lines = ['Quizzes are on Mondays and Wednesdays', '| 7 | Oct 19 - 23 | Quiz 3 |'];
-    expect(read(lines)).toEqual([{ title: 'Quiz 3 (week of Oct 19)', when: '10/19' }]);
+    expect(read(lines)).toEqual([]);
   });
 
   it('ignores a review session in its week', () => {
@@ -109,22 +114,10 @@ describe('a week with no rule for the day', () => {
   });
 });
 
-describe('one assessment dated across several columns', () => {
-  it('lists each date as its own quiz, numbered in order', () => {
-    expect(read(['| Quizzes | Oct 2 | Oct 16 | Oct 30 | 15% |'])).toEqual([
-      { title: 'Quiz 1', when: '10/2' },
-      { title: 'Quiz 2', when: '10/16' },
-      { title: 'Quiz 3', when: '10/30' },
-    ]);
-  });
-
-  it('reads a singular name with its dates in a list', () => {
-    expect(read(['Tutorial quiz: Sept 25, Oct 9, Oct 23, Nov 6']).map((s) => s.when)).toEqual([
-      '9/25',
-      '10/9',
-      '10/23',
-      '11/6',
-    ]);
+describe('one name with several dates on its line', () => {
+  it('leaves it out rather than guess which quiz is which', () => {
+    expect(read(['| Quizzes | Oct 2 | Oct 16 | Oct 30 | 15% |'])).toEqual([]);
+    expect(read(['Tutorial quiz: Sept 25, Oct 9, Oct 23, Nov 6'])).toEqual([]);
   });
 
   it('still refuses a makeup sitting', () => {

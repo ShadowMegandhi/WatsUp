@@ -12,6 +12,8 @@
  * handled here.
  */
 
+import { toLines } from './lines';
+
 const EOCD_SIG = 0x06054b50;
 const CENTRAL_SIG = 0x02014b50;
 const LOCAL_SIG = 0x04034b50;
@@ -93,25 +95,52 @@ const inflateRaw = async (data: Uint8Array): Promise<Uint8Array> => {
 };
 
 /**
- * WordprocessingML to lines. Each table row becomes one line; every other
- * paragraph is its own line.
+ * WordprocessingML to lines.
+ *
+ * Tables are rewritten as HTML tables and read exactly like a web outline's:
+ * one line per row, a header naming a column's assessment, a table's week
+ * labels kept to that table. A cell Word merges down several rows
+ * ("vMerge") is written into each row it covers, which is what a merged
+ * week or date cell means.
  */
 export const documentXmlToLines = (xml: string): readonly string[] =>
-  xml
-    .replace(TABLE_ROW, (row) => rowToLine(row) + '\n')
-    .replace(PARA_END, '\n')
-    .replace(TAB_OR_BREAK, ' ')
-    .replace(ANY_TAG, '')
-    .split('\n')
-    .map((l) => decodeEntities(l).replace(WHITESPACE, ' ').trim())
-    .filter((l) => l.length > 0);
+  toLines(documentXmlToHtml(xml));
 
-const rowToLine = (row: string): string =>
-  row
-    .split(CELL_END)
-    .map((cell) => cell.replace(PARA_END, ' ').replace(TAB_OR_BREAK, ' ').replace(ANY_TAG, '').trim())
-    .filter((cell) => cell !== '')
-    .join(' | ');
+const escapeHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const textOf = (xml: string): string =>
+  decodeEntities(xml.replace(PARA_END, ' ').replace(TAB_OR_BREAK, ' ').replace(ANY_TAG, ''))
+    .replace(WHITESPACE, ' ')
+    .trim();
+
+/** A Word table as an HTML table, with vertically merged cells filled in. */
+const tableToHtml = (tableXml: string): string => {
+  let above: string[] = [];
+  const rows = [...tableXml.matchAll(TABLE_ROW)].map((row) => {
+    const texts: string[] = [];
+    for (const cell of row[0].matchAll(CELL)) {
+      const xml = cell[0];
+      const across = Number(/<w:gridSpan\b[^>]*w:val="(\d+)"/.exec(xml)?.[1] ?? '1');
+      const merge = /<w:vMerge\b([^>]*)\/?>/.exec(xml);
+      const continues = merge !== null && !/w:val="restart"/.test(merge[1] ?? '');
+      const col = texts.length;
+      texts.push(continues ? (above[col] ?? '') : textOf(xml));
+      for (let k = 1; k < across && k < 20; k += 1) texts.push('');
+    }
+    above = texts;
+    return `<tr>${texts.map((t) => `<td>${escapeHtml(t)}</td>`).join('')}</tr>`;
+  });
+  return `<table>${rows.join('')}</table>`;
+};
+
+/** The whole document body as simple HTML: paragraphs and tables. */
+export const documentXmlToHtml = (xml: string): string =>
+  xml
+    .replace(TABLE, (table) => tableToHtml(table))
+    .replace(PARAGRAPH, (p) => {
+      const text = textOf(p);
+      return text === '' ? ' ' : `<p>${escapeHtml(text)}</p>`;
+    });
 
 const decodeEntities = (s: string): string =>
   s
@@ -122,8 +151,10 @@ const decodeEntities = (s: string): string =>
     .replace(/&#(\d+);/g, (_m, d: string) => String.fromCodePoint(Number(d)))
     .replace(/&amp;/g, '&');
 
+const TABLE = /<w:tbl>[\s\S]*?<\/w:tbl>/g;
 const TABLE_ROW = /<w:tr[ >][\s\S]*?<\/w:tr>/g;
-const CELL_END = /<\/w:tc>/;
+const CELL = /<w:tc[ >][\s\S]*?<\/w:tc>/g;
+const PARAGRAPH = /<w:p[ >][\s\S]*?<\/w:p>/g;
 const PARA_END = /<\/w:p>/g;
 const TAB_OR_BREAK = /<w:(?:tab|br|cr)\b[^>]*\/>/g;
 const ANY_TAG = /<[^>]+>/g;

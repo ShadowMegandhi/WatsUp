@@ -58,13 +58,34 @@ const BODY = `<?xml version="1.0"?><w:document><w:body>${p('ENGR 101 Course Outl
   'Quiz 2',
 )}${row('Week 8', 'Oct 26', 'Lecture: design &amp; ethics')}</w:tbl></w:body></w:document>`;
 
+/** A row's cells, however the separators between them are written. */
+const cells = (lines: readonly string[]): readonly string[] =>
+  lines.map((l) => l.split('|').map((c) => c.trim()).filter((c) => c !== '').join(' | '));
+
 describe('documentXmlToLines', () => {
   it('keeps a table row on one line with its cells in order', () => {
-    expect(documentXmlToLines(BODY)).toContain('Week 7 | Oct 19 | Quiz 2');
+    expect(cells(documentXmlToLines(BODY))).toContain('Week 7 | Oct 19 | Quiz 2');
   });
 
   it('decodes entities', () => {
-    expect(documentXmlToLines(BODY)).toContain('Week 8 | Oct 26 | Lecture: design & ethics');
+    expect(cells(documentXmlToLines(BODY))).toContain('Week 8 | Oct 26 | Lecture: design & ethics');
+  });
+
+  it('writes a merged week cell into every row it covers', () => {
+    const merged = (text: string, restart: boolean): string =>
+      `<w:tc><w:tcPr><w:vMerge${restart ? ' w:val="restart"' : ''}/></w:tcPr>${p(restart ? text : '')}</w:tc>`;
+    const xml =
+      '<w:document><w:body><w:tbl>' +
+      `<w:tr>${merged('Oct 19 - 23', true)}<w:tc>${p('Quiz 2')}</w:tc></w:tr>` +
+      `<w:tr>${merged('', false)}<w:tc>${p('Lab 3')}</w:tc></w:tr>` +
+      '</w:tbl>' +
+      p('Quizzes are written on Mondays at 5:30 pm') +
+      p('Labs are due on Fridays at 11:59 pm') +
+      '</w:body></w:document>';
+    expect(cells(documentXmlToLines(xml))).toContain('Oct 19 - 23 | Lab 3');
+    const term = termFrom(new Date(2026, 8, 8).getTime(), Date.now());
+    const found = extractAssessments(documentXmlToLines(xml), term);
+    expect(found.map((c) => `${c.title} ${new Date(c.dueAt).getDate()}`)).toEqual(['Quiz 2 19', 'Lab 3 23']);
   });
 
   it('puts ordinary paragraphs on their own lines', () => {

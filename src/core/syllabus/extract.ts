@@ -30,7 +30,6 @@ import {
   CONTEXT_VETO_TERMS,
   NOT_A_DEADLINE_TERMS,
   REVIEW_PREFIXES,
-  TOPIC_WORDS,
   UNGRADED_TERMS,
   VETO_TERMS,
   WINDOW_TERMS,
@@ -49,7 +48,6 @@ import {
   cellAround,
   containsWord,
   findMentions,
-  findPluralMention,
   isNegated,
   readWeight,
   tidy,
@@ -212,14 +210,10 @@ export const readLine = (raw: string, term: TermContext): readonly Candidate[] =
   if (VETO_TERMS.some((t) => lower.includes(t))) return [];
 
   const mentions = findMentions(lower).filter((m) => !isNegated(lower, m.at));
-  if (mentions.length === 0) return readSeries(line, null, term);
+  if (mentions.length === 0) return [];
 
   const found = pickDate(line, term);
-  if (found === null) {
-    const each = readEachMention(line, mentions, term);
-    if (each.length > 0 || mentions.length !== 1) return each;
-    return readSeries(line, mentions[0] ?? null, term);
-  }
+  if (found === null) return readEachMention(line, mentions, term);
 
   // With several assessments on one line, a single percentage could belong
   // to any of them, so it is attached only when there is one.
@@ -282,60 +276,6 @@ const readEachMention = (
   });
 
   return out;
-};
-
-/** A choice of sittings, not a series of quizzes. */
-const SERIES_VETO = /\b(?:or|either|makeup|make-up|alternate|alternative|deferred|rescheduled|conflict)\b/i;
-
-/** A weekly schedule row ("| 7 | Oct 19 | Oct 21 | Quiz |") lists class days. */
-const SCHEDULE_ROW = /^\s*(?:week|wk)\b|^\|?\s*\d{1,2}\s*\|/i;
-
-/** A term has at most this many of one assessment. */
-const MAX_SERIES = 12;
-
-/**
- * One assessment dated across several columns or a list: "Quizzes | Oct 2 |
- * Oct 16 | Oct 30", "Tutorial quiz: Sept 25, Oct 9, Oct 23". Each date is
- * its own item, numbered in order. Refused when the name already carries a
- * number, when the line offers a choice ("or", "makeup"), and on weekly
- * schedule rows, whose dates are class days.
- */
-const readSeries = (line: string, mention: Mention | null, term: TermContext): readonly Candidate[] => {
-  if (SERIES_VETO.test(line) || SCHEDULE_ROW.test(line) || TOPIC_WORDS.test(line)) return [];
-  const name = mention ?? findPluralMention(line.toLowerCase());
-  if (name === null) return [];
-
-  const base = buildTitle(line, name.term, '');
-  if (/\d/.test(base)) return [];
-
-  const dates: FoundDate[] = [];
-  let rest = line;
-  while (dates.length < MAX_SERIES) {
-    const found = findDate(rest, term);
-    if (found === null) break;
-    if (isRange(rest, found.matched)) return [];
-    dates.push(found);
-    rest = rest.replace(found.matched, ' ');
-  }
-  if (dates.length < 2) return [];
-  if (dates.some((d) => d.confidence < MIN_DATE_CONFIDENCE || !withinTerm(d.date, term))) return [];
-  if (!passesScopedRules(line, name.at, (dates[0] as FoundDate).matched)) return [];
-
-  const ordered = [...new Map(dates.map((d) => [dateKey(d.date), d])).values()].sort(
-    (a, b) => toInstant(a.date, 0, 0) - toInstant(b.date, 0, 0),
-  );
-
-  return ordered.map((d, i) => ({
-    title: `${base} ${i + 1}`,
-    kind: name.kind,
-    date: d.date,
-    dueAt: toInstant(d.date, 23, 59),
-    hasTime: false,
-    // A weight beside a series is usually the total for all of them.
-    weightPct: null,
-    sourceLine: line,
-    matchedTerm: name.term,
-  }));
 };
 
 /**
