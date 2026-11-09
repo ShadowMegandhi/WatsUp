@@ -99,6 +99,9 @@ export const WINDOW_TERMS: readonly string[] = [
   'exam week',
   'midterm week',
   'week of',
+  'week beginning',
+  'week starting',
+  'week commencing',
   'registrar',
   'tba',
   'tbd',
@@ -248,4 +251,4 @@ export const REVIEW_PREFIXES: readonly string[] = [
  * documents already cached on an existing install. Forgetting this is why a
  * heuristics fix can appear to do nothing.
  */
-export const LEXICON_VERSION = 10;
+export const LEXICON_VERSION = 11;

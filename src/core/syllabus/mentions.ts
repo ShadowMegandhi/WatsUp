@@ -137,6 +137,48 @@ export const buildTitle = (line: string, term: string, dateText: string): string
 
 export const tidy = (raw: string): string => raw.replace(/\s+/g, ' ').trim();
 
+/** "week of", "week beginning", "w/o", optionally a weekday: what comes just before a week's first day. */
+const WEEK_START_BEFORE =
+  /\b(?:week\s+(?:of|beginning|starting|commencing)|wk\.?\s+of|w\/o)\s*:?\s*(?:(?:sun|mon|tue|wed|thu|fri|sat)[a-z]*\.?,?\s+)?$/i;
+
+/**
+ * "Week of Nov 9": the date is where a week starts, not a day anything
+ * happens on. Listing the work on it would be a guess.
+ */
+export const isWeekStart = (line: string, matched: string): boolean => {
+  const at = line.indexOf(matched);
+  return at >= 0 && WEEK_START_BEFORE.test(line.slice(Math.max(0, at - 40), at));
+};
+
+/** A column header saying its dates are weeks: "Week of", "Week beginning", "W/O". */
+const WEEK_COLUMN = /^(?:week|wk)\.?\s+(?:of|beginning|starting|commencing)$|^w\/o$/i;
+const MONTH_DAY = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*\d/i;
+
+/**
+ * Dates under a "Week of" column, written out as "Week of Nov 9" so every
+ * reader after this sees a week, not a day. A table's rows follow its
+ * header until the first line that is not a table row.
+ */
+export const markWeekColumns = (lines: readonly string[]): readonly string[] => {
+  let columns: readonly number[] = [];
+  return lines.map((line) => {
+    if (!line.includes('|')) {
+      columns = [];
+      return line;
+    }
+    const cells = line.split('|');
+    const heads = cells.flatMap((c, k) => (WEEK_COLUMN.test(c.trim()) ? [k] : []));
+    if (heads.length > 0) {
+      columns = heads;
+      return line;
+    }
+    if (columns.length === 0) return line;
+    const marked = (c: string, k: number): string =>
+      columns.includes(k) && MONTH_DAY.test(c) && !/\bweek\b|w\/o/i.test(c) ? ` Week of ${c.trim()} ` : c;
+    return cells.map(marked).join('|');
+  });
+};
+
 export const cellAround = (line: string, at: number): string => {
   const start = at > 0 ? line.lastIndexOf('|', at - 1) + 1 : 0;
   const end = line.indexOf('|', at);

@@ -45,6 +45,7 @@ import {
   findMentions,
   isNegated,
   readWeight,
+  isWeekStart,
   tidy,
   type Mention,
 } from './mentions';
@@ -101,6 +102,8 @@ const monthNumber = (word: string): number | null => {
 const readSpan = (text: string, term: TermContext): Span | null => {
   const found = findDate(text, term);
   if (found === null || found.confidence < 0.85) return null;
+  // "Week of Nov 9": the whole week that day starts.
+  if (isWeekStart(text, found.matched)) return weekFrom(mondayOf(found.date));
 
   const at = text.indexOf(found.matched);
   const after = at < 0 ? '' : text.slice(at + found.matched.length);
@@ -284,7 +287,9 @@ export const readRules = (lines: readonly string[]): readonly Rule[] => {
 // --- placing -------------------------------------------------------------------
 
 /** Window words, less the ones that are exactly what a week reference is. */
-const PLACING_WINDOW_TERMS = WINDOW_TERMS.filter((t) => !['week of', 'midterm week', 'exam week'].includes(t));
+const PLACING_WINDOW_TERMS = WINDOW_TERMS.filter(
+  (t) => !['week of', 'week beginning', 'week starting', 'week commencing', 'midterm week', 'exam week'].includes(t),
+);
 
 
 const nameCellIsUsable = (line: string, at: number): boolean => {
@@ -305,6 +310,11 @@ const hasOwnDate = (line: string, term: TermContext): boolean => {
     if (found === null) return false;
     const at = rest.indexOf(found.matched);
     const after = rest.slice(at + found.matched.length);
+    // "Week of Nov 9" names a week, which is placed like any other week.
+    if (isWeekStart(rest, found.matched)) {
+      rest = rest.slice(0, at) + ' ' + after;
+      continue;
+    }
     const range = /^\s*(?:-|–|—|to|through|until)\s*(?:[a-z]{3,9}\.?\s+)?\d{1,2}\b/i.exec(after);
     if (range === null) return true;
     // "Oct 26 - Nov 1" is one span: drop its end date too, or "Nov 1" would
@@ -377,7 +387,15 @@ const place = (span: Span, rule: Rule | undefined): CivilDate | null => {
  * "| 7 | Oct 19 - 23 |") sets the week for the lines under it.
  */
 const labelsAWeek = (line: string, term: TermContext): boolean =>
-  findMentions(line.toLowerCase()).length === 0 && (HEADING.test(line) || (line.includes('|') && weekOfHeading(line) !== null) || (line.includes('|') && readSpan(line, term) !== null && cellsOf(line).length <= 3));
+  findMentions(line.toLowerCase()).length === 0 &&
+  (HEADING.test(line) ||
+    (line.includes('|') && weekOfHeading(line) !== null) ||
+    (line.includes('|') && readSpan(line, term) !== null && cellsOf(line).length <= 3) ||
+    // "Week of Nov 9" on a line of its own.
+    (WEEK_LINE.test(line) && readSpan(line, term) !== null));
+
+/** A line that opens with a week: "Week of Nov 9", "W/O Nov 9". */
+const WEEK_LINE = /^\s*(?:week|wk\.?|w\/o)\b/i;
 
 /**
  * Assessments the line reader could not date, placed by week and rule.

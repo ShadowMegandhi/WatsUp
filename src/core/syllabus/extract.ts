@@ -50,6 +50,8 @@ import {
   findMentions,
   isNegated,
   readWeight,
+  isWeekStart,
+  markWeekColumns,
   tidy,
   type Mention,
 } from './mentions';
@@ -84,9 +86,10 @@ const MAX_NAME_LINE = 120;
 const MAX_DATE_LINE_EXTRA = 12;
 
 export const extractAssessments = (
-  lines: readonly string[],
+  given: readonly string[],
   term: TermContext,
 ): readonly Candidate[] => {
+  const lines = markWeekColumns(given);
   const out: Candidate[] = [];
   // A date line lends its date to one name only.
   const claimed = new Set<number>();
@@ -189,6 +192,8 @@ const isBareDateLine = (line: string, term: TermContext): boolean => {
   const found = findDate(line, term);
   if (found === null) return false;
   if (findMentions(line.toLowerCase()).length > 0) return false;
+  // "Week of Nov 9" heads a week; it dates nothing under it.
+  if (isWeekStart(line, found.matched)) return false;
 
   const extra = line
     .replace(found.matched, ' ')
@@ -361,7 +366,8 @@ const pickDate = (line: string, term: TermContext): FoundDate | null => {
     d.confidence >= MIN_DATE_CONFIDENCE &&
     withinTerm(d.date, term) &&
     !isRange(line, d.matched) &&
-    !isDayList(line, d.matched);
+    !isDayList(line, d.matched) &&
+    !isWeekStart(line, d.matched);
 
   if (dates.length === 0) return null;
   if (dates.length === 1) {
