@@ -18,7 +18,7 @@ import {
   MAX_LINKS_PER_COURSE,
   outlineSearchUrl,
   parseOutlineLink,
-  parseOutlineText,
+  preparePaste,
 } from '@core/outlineLinks';
 import type { Course, CourseHealth, ResolvedTask } from '@core/types';
 import {
@@ -102,8 +102,8 @@ export function CoursesView({
               in a moment.
             </li>
             <li>
-              No link, or dates still missing? Select the outline&rsquo;s schedule and assessment table, copy
-              it, and use <b>Paste outline text</b> on that course.
+              Still missing a quiz or due date? Open the outline, press <b>Ctrl+A</b> then <b>Ctrl+C</b>, and
+              use <b>Paste the outline</b> on that course.
             </li>
           </ol>
         )}
@@ -117,6 +117,9 @@ export function CoursesView({
           openCount={tasks.filter((t) => t.item.courseId === course.id && t.status !== 'completed').length}
           links={links[course.id] ?? []}
           pasted={texts[course.id] ?? null}
+          fromOutline={tasks.filter(
+            (t) => t.item.courseId === course.id && t.item.sources.some((s) => s.system === 'syllabus'),
+          )}
           onSaved={reload}
         />
       ))}
@@ -141,15 +144,41 @@ type CardProps = {
   openCount: number;
   links: readonly string[];
   pasted: string | null;
+  fromOutline: readonly ResolvedTask[];
   onSaved: () => Promise<void>;
 };
 
-function CourseCard({ course, health, openCount, links, pasted, onSaved }: CardProps) {
+const whenLabel = (t: ResolvedTask): string => {
+  const at = t.effectiveDueAt ?? t.item.dueAt;
+  if (at === null) return 'no date';
+  const d = new Date(at);
+  const day = d.toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' });
+  return t.item.isAllDay ? day : `${day}, ${d.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' })}`;
+};
+
+/** Everything read from this course's outline, so a gap is easy to spot. */
+function FoundList({ items }: { items: readonly ResolvedTask[] }) {
+  const sorted = [...items].sort((a, b) => (a.item.dueAt ?? 0) - (b.item.dueAt ?? 0));
+  return (
+    <ul class="ofound">
+      {sorted.map((t) => (
+        <li key={t.item.id} title={t.item.sources.find((s) => s.system === 'syllabus')?.detail?.rawLine ?? ''}>
+          <span class="ofname">{t.effectiveTitle}</span>
+          <span class="ofwhen">{whenLabel(t)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function CourseCard({ course, health, openCount, links, pasted, fromOutline: outlineItems, onSaved }: CardProps) {
   const found = foundOnItsOwn(health);
   const hasLink = links.length > 0;
   const hasPasted = pasted !== null;
   const [adding, setAdding] = useState(false);
-  const fromOutline = health?.syllabusItems ?? 0;
+  const [pasteFirst, setPasteFirst] = useState(false);
+  const [showFound, setShowFound] = useState(false);
+  const fromOutline = outlineItems.length;
   const label = shortCourseLabel(course.code, course.name);
   // LEARN names are often just the code again ("ENGR151_instr_1269").
   const fullName = /\s/.test(course.name.trim()) ? course.name : null;
@@ -176,11 +205,13 @@ function CourseCard({ course, health, openCount, links, pasted, onSaved }: CardP
           <b>{openCount}</b> to do
         </span>
         {fromOutline > 0 && (
-          <span>
-            <b>{fromOutline}</b> {fromOutline === 1 ? 'date' : 'dates'} from outline
-          </span>
+          <button type="button" class="textbtn cfound" aria-expanded={showFound} onClick={() => setShowFound(!showFound)}>
+            <b>{fromOutline}</b> {fromOutline === 1 ? 'date' : 'dates'} from outline &middot; {showFound ? 'hide' : 'see them'}
+          </button>
         )}
       </div>
+
+      {showFound && <FoundList items={outlineItems} />}
 
       <div class={`cstatus ${status.tone}`}>
         <span class="cicon" aria-hidden="true">
@@ -195,7 +226,30 @@ function CourseCard({ course, health, openCount, links, pasted, onSaved }: CardP
       </div>
 
       {(status.tone === 'missing' || hasLink || hasPasted || adding) && (
-        <OutlineEditor course={course} label={label} links={links} pasted={pasted} onSaved={onSaved} />
+        <OutlineEditor
+          course={course}
+          label={label}
+          links={links}
+          pasted={pasted}
+          startPasting={pasteFirst}
+          onSaved={onSaved}
+        />
+      )}
+
+      {status.tone === 'ok' && !hasPasted && !pasteFirst && (
+        <div class="cbackup">
+          Still missing something?
+          <button
+            type="button"
+            class="textbtn"
+            onClick={() => {
+              setAdding(true);
+              setPasteFirst(true);
+            }}
+          >
+            Copy and paste the outline
+          </button>
+        </div>
       )}
 
       {health?.lastError != null && health.lastError !== '' && (
@@ -213,6 +267,8 @@ type EditorProps = {
   label: string;
   links: readonly string[];
   pasted: string | null;
+  /** Open with the paste box showing, from "Still missing something?". */
+  startPasting?: boolean;
   onSaved: () => Promise<void>;
 };
 
@@ -224,11 +280,18 @@ const readSoon = (): void => {
   chrome.runtime.sendMessage({ type: 'sync-now' }).catch(() => undefined);
 };
 
-function OutlineEditor({ course, label, links, pasted, onSaved }: EditorProps) {
+function OutlineEditor({ course, label, links, pasted, startPasting = false, onSaved }: EditorProps) {
   const [draft, setDraft] = useState('');
   const [message, setMessage] = useState<{ text: string; bad: boolean } | null>(null);
-  const [pasting, setPasting] = useState(false);
+  const [pasting, setPasting] = useState(startPasting);
   const [textDraft, setTextDraft] = useState('');
+  // The page markup that came with the last paste, which keeps table rows
+  // whole. Cleared when the box is emptied.
+  const [pastedHtml, setPastedHtml] = useState('');
+
+  useEffect(() => {
+    if (startPasting) setPasting(true);
+  }, [startPasting]);
 
   const saveText = useCallback(
     async (text: string | null, done: string): Promise<boolean> => {
@@ -246,7 +309,7 @@ function OutlineEditor({ course, label, links, pasted, onSaved }: EditorProps) {
   );
 
   const addText = useCallback(async () => {
-    const check = parseOutlineText(textDraft);
+    const check = preparePaste(textDraft, textDraft.trim() === '' ? '' : pastedHtml);
     if (!check.ok) {
       setMessage({ text: check.reason, bad: true });
       return;
@@ -254,8 +317,9 @@ function OutlineEditor({ course, label, links, pasted, onSaved }: EditorProps) {
     // The draft is kept until it is safely stored: it can be a whole outline.
     if (!(await saveText(check.text, 'Saved. Reading it now…'))) return;
     setTextDraft('');
+    setPastedHtml('');
     setPasting(false);
-  }, [textDraft, saveText]);
+  }, [textDraft, pastedHtml, saveText]);
 
   const save = useCallback(
     async (next: readonly string[], done: string) => {
@@ -338,9 +402,7 @@ function OutlineEditor({ course, label, links, pasted, onSaved }: EditorProps) {
 
       {pasted !== null && (
         <div class="olink">
-          <span title={pasted.slice(0, 300)}>
-            Pasted outline text &middot; {pasted.split('\n').length} lines
-          </span>
+          <span>{pasted.startsWith('<') ? 'Pasted outline (copied from a page)' : 'Pasted outline text'}</span>
           <button
             type="button"
             class="oremove"
@@ -363,23 +425,28 @@ function OutlineEditor({ course, label, links, pasted, onSaved }: EditorProps) {
           <textarea
             class="oinput otext"
             rows={5}
-            placeholder="Paste the outline's schedule and assessment table here"
+            placeholder="Open the outline, press Ctrl+A then Ctrl+C, and paste it here with Ctrl+V"
             aria-label={`Outline text for ${label}`}
             value={textDraft}
-            onInput={(e) => setTextDraft((e.currentTarget as HTMLTextAreaElement).value)}
+            onPaste={(e) => setPastedHtml(e.clipboardData?.getData('text/html') ?? '')}
+            onInput={(e) => {
+              const value = (e.currentTarget as HTMLTextAreaElement).value;
+              setTextDraft(value);
+              if (value.trim() === '') setPastedHtml('');
+            }}
           />
           <div class="oform">
             <button type="button" class="obtn ghost" onClick={() => setPasting(false)}>
               Cancel
             </button>
             <button type="submit" class="obtn">
-              {pasted === null ? 'Save text' : 'Replace text'}
+              {pasted === null ? 'Save' : 'Replace'}
             </button>
           </div>
         </form>
       ) : (
         <button type="button" class="textbtn" onClick={() => setPasting(true)}>
-          {pasted === null ? 'Paste outline text instead' : 'Replace pasted text'}
+          {pasted === null ? 'Or copy and paste the outline' : 'Paste it again'}
         </button>
       )}
 

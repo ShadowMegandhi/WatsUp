@@ -73,6 +73,43 @@ export const parseOutlineText = (input: string): TextCheck => {
   return { ok: true, text };
 };
 
+/** Copied page markup above this, once slimmed, is not one outline. */
+const MAX_PASTED_HTML = 400_000;
+
+/** Markup worth keeping: something with rows or paragraphs in it. */
+const HAS_STRUCTURE = /<\s*(?:table|tr|td|th|p|li|br|div|h[1-6])\b/i;
+
+/**
+ * Copied page markup with everything but its structure removed: no scripts,
+ * styles or comments, and no attributes on any tag. What is left is small
+ * and is exactly what keeps a table row on one line when it is read.
+ */
+export const slimPastedHtml = (html: string): string =>
+  html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<(meta|link|img|svg|input|button)[^>]*>/gi, ' ')
+    .replace(/<(\/?)([a-z][a-z0-9]*)\b[^>]*>/gi, '<$1$2>')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+
+/**
+ * What a paste into the outline box is saved as.
+ *
+ * Copying from a web page puts two things on the clipboard: plain text and
+ * the page's markup. Plain text splits a table cell holding two paragraphs
+ * across lines, which pulls a quiz away from its date. The markup keeps
+ * every row whole, so it is preferred whenever the copy carried any.
+ */
+export const preparePaste = (text: string, html: string): TextCheck => {
+  if (html !== '' && HAS_STRUCTURE.test(html)) {
+    const slim = slimPastedHtml(html);
+    if (slim.length >= MIN_PASTED_CHARS && slim.length <= MAX_PASTED_HTML) return { ok: true, text: slim };
+  }
+  return parseOutlineText(text);
+};
+
 /** The outline site's search, already filled in with this course's code. */
 export const outlineSearchUrl = (code: string, name: string): string =>
   `${OUTLINE_SITE}/viewer/?q=${encodeURIComponent(shortCourseLabel(code, name))}`;

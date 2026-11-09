@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { parseOutlineLink, parseOutlineText, outlineSearchUrl } from '@core/outlineLinks';
+import { parseOutlineLink, parseOutlineText, preparePaste, outlineSearchUrl } from '@core/outlineLinks';
 import { syncSyllabus } from '@sync/syllabusSync';
 import { fakeFetcher } from '@test/doubles/fakeFetcher';
 import type { Course } from '@core/types';
@@ -121,5 +121,52 @@ describe('syncSyllabus with pasted outline text', () => {
     expect(r.value.items.map((i) => i.title)).toEqual(['Activity 4', 'Quiz 3', 'Task 2']);
     expect(r.value.docsRead).toBe(1);
     expect(r.value.items[0]?.sources[0]?.detail?.fileName).toBe('Your pasted outline');
+  });
+});
+
+describe('preparePaste', () => {
+  // What Chrome puts on the clipboard when a student copies an outline-site
+  // table: real rows, cells holding several paragraphs, styling noise.
+  const html =
+    '<meta charset="utf-8"><style>td{color:red}</style>' +
+    '<table class="multitable" style="width:100%"><tbody>' +
+    '<tr><td><p>Week 7</p><p>Oct 19 - 23</p></td><td><p>Trusses</p></td><td><p>Quiz 2</p></td></tr>' +
+    '<tr><td><p>Quiz 3</p></td><td><p>Friday,</p><p>November 13</p></td></tr>' +
+    '</tbody></table><p>Quizzes are written on Mondays at 5:30</p><script>x()</script>';
+  // The same copy as plain text: every paragraph on its own line.
+  const text = 'Week 7\nOct 19 - 23\tTrusses\tQuiz 2\nQuiz 3\tFriday,\nNovember 13\nQuizzes are written on Mondays at 5:30';
+
+  it('keeps the copied page markup, which holds each table row together', () => {
+    const r = preparePaste(text, html);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.text).toContain('<tr>');
+    expect(r.text).not.toContain('style=');
+    expect(r.text).not.toContain('x()');
+  });
+
+  it('falls back to plain text when the copy carries no markup', () => {
+    expect(preparePaste('Quiz 3\tNov 13', '')).toEqual({ ok: true, text: 'Quiz 3\tNov 13' });
+  });
+
+  it('reads every quiz from the pasted markup, using the weekly rule', async () => {
+    const course: Course = {
+      id: '100015',
+      name: 'SYDE151',
+      code: 'SYDE151_instr_1269',
+      looksAcademic: true,
+      url: 'https://learn.uwaterloo.ca/d2l/home/100015',
+    };
+    const fetcher = fakeFetcher([['/content/toc', { json: { Modules: [] } }]]);
+    const r = preparePaste(text, html);
+    if (!r.ok) throw new Error(r.reason);
+
+    const out = await syncSyllabus(fetcher, course, '1.80', [], new Date(2026, 8, 10).getTime(), [], r.text);
+    if (!out.ok) throw new Error('sync failed');
+    const seen = out.value.items.map((i) => {
+      const d = new Date(i.dueAt ?? 0);
+      return `${i.title} ${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+    });
+    expect(seen).toEqual(['Quiz 2 10/19 17:30', 'Quiz 3 11/13 23:59']);
   });
 });
