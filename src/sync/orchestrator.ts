@@ -39,6 +39,7 @@ import {
   writeSeenNewsIds,
   readSyllabusCache,
   readOutlineLinks,
+  readOutlineTexts,
   writeSyllabusCache,
   syllabusCacheIsFresh,
   readAllItems,
@@ -91,6 +92,7 @@ export const runSync = async (
     let synced = 0;
     let failed = 0;
     const outlineLinks = await readOutlineLinks();
+    const outlineTexts = await readOutlineTexts();
 
     for (const course of courses) {
       const known = await readItemsFor(course.id);
@@ -130,7 +132,15 @@ export const runSync = async (
 
       const syllabus = fresh
         ? null
-        : await syncSyllabus(fetcher, course, versions.le, items, now, outlineLinks[course.id] ?? []);
+        : await syncSyllabus(
+            fetcher,
+            course,
+            versions.le,
+            items,
+            now,
+            outlineLinks[course.id] ?? [],
+            outlineTexts[course.id] ?? null,
+          );
 
       const worthCaching =
         syllabus !== null &&

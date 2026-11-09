@@ -46,6 +46,33 @@ export const parseOutlineLink = (input: string): LinkCheck => {
   return { ok: true, url: url.toString() };
 };
 
+/** Pasted outline text above this is not an outline; it would bloat storage. */
+export const MAX_PASTED_CHARS = 100_000;
+
+/** Shorter than this cannot hold a dated assessment. */
+const MIN_PASTED_CHARS = 10;
+
+export type TextCheck =
+  | { readonly ok: true; readonly text: string }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Checks outline text a student pasted. Line breaks and tabs are kept: a
+ * table copied from a page arrives as one row per line, cells split by tabs,
+ * and that is what keeps a date beside the quiz it belongs to.
+ */
+export const parseOutlineText = (input: string): TextCheck => {
+  const text = input.replace(/\r\n?/g, '\n').trim();
+  if (text.length < MIN_PASTED_CHARS) return { ok: false, reason: 'Paste the outline text first.' };
+  if (text.length > MAX_PASTED_CHARS) {
+    return { ok: false, reason: 'That is too long. Paste just the schedule and assessment parts.' };
+  }
+  if (/^https?:\/\/\S+$/i.test(text)) {
+    return { ok: false, reason: 'That is a link. Paste it in the link box above.' };
+  }
+  return { ok: true, text };
+};
+
 /** The outline site's search, already filled in with this course's code. */
 export const outlineSearchUrl = (code: string, name: string): string =>
   `${OUTLINE_SITE}/viewer/?q=${encodeURIComponent(shortCourseLabel(code, name))}`;

@@ -14,6 +14,7 @@
 import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { docxToLines, looksLikeZip } from '@core/syllabus/docx';
+import { linesFromItems } from '@core/syllabus/pdfLines';
 
 // Must be a file inside the extension. A CDN URL is blocked by the extension
 // CSP and is a hard Chrome Web Store rejection.
@@ -95,54 +96,4 @@ const extract = async (url: string): Promise<ExtractReply> => {
   } finally {
     await doc.destroy();
   }
-};
-
-interface TextItem {
-  readonly str?: unknown;
-  readonly transform?: unknown;
-  readonly height?: unknown;
-}
-
-/**
- * Rebuilds lines from positioned text runs.
- *
- * pdf.js reports fragments with coordinates, not lines. Fragments sharing a
- * baseline belong together, and in a schedule table that is exactly one row:
- * the date cell and the assessment cell arrive as separate runs at the same
- * height. Grouping by baseline is what turns them back into a single string
- * the extractor can read.
- */
-const linesFromItems = (items: readonly unknown[]): readonly string[] => {
-  const rows = new Map<number, { x: number; text: string }[]>();
-
-  for (const raw of items) {
-    const item = raw as TextItem;
-    const text = typeof item.str === 'string' ? item.str : '';
-    if (text.trim() === '') continue;
-
-    const t = item.transform;
-    if (!Array.isArray(t) || t.length < 6) continue;
-
-    const x = Number(t[4]);
-    const y = Number(t[5]);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-
-    // Round the baseline so runs a fraction of a point apart still group.
-    const key = Math.round(y / 3);
-    const row = rows.get(key);
-    if (row === undefined) rows.set(key, [{ x, text }]);
-    else row.push({ x, text });
-  }
-
-  return [...rows.entries()]
-    .sort((a, b) => b[0] - a[0])
-    .map(([, runs]) =>
-      runs
-        .sort((a, b) => a.x - b.x)
-        .map((r) => r.text)
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim(),
-    )
-    .filter((l) => l.length > 0);
 };

@@ -3,8 +3,9 @@
  *
  * Each card says how much is on the list for that course and whether its
  * outline was found. When it was not, the fix is right there in the card:
- * find the outline on the outline site, paste its link, done. From then on
- * the outline is read on every sync like one found in LEARN.
+ * find the outline on the outline site, paste its link, done. Or paste the
+ * outline's text itself, for an outline no link reaches. From then on the
+ * outline is read on every sync like one found in LEARN.
  *
  * Exists because an empty syllabus result and a syllabus that was never found
  * look identical from the outside, and a student who cannot tell which
@@ -13,9 +14,21 @@
 
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { shortCourseLabel } from '@core/courseColor';
-import { MAX_LINKS_PER_COURSE, outlineSearchUrl, parseOutlineLink } from '@core/outlineLinks';
+import {
+  MAX_LINKS_PER_COURSE,
+  outlineSearchUrl,
+  parseOutlineLink,
+  parseOutlineText,
+} from '@core/outlineLinks';
 import type { Course, CourseHealth, ResolvedTask } from '@core/types';
-import { readOutlineLinks, writeOutlineLinks, type OutlineLinks } from '@storage/store';
+import {
+  readOutlineLinks,
+  readOutlineTexts,
+  writeOutlineLinks,
+  writeOutlineText,
+  type OutlineLinks,
+  type OutlineTexts,
+} from '@storage/store';
 import { colorVars } from './courseStyle';
 import { Empty } from './Row';
 
@@ -45,7 +58,11 @@ export function CoursesView({
   diagnostics,
 }: CoursesProps) {
   const [links, setLinks] = useState<OutlineLinks>({});
-  const reload = useCallback(async () => setLinks(await readOutlineLinks()), []);
+  const [texts, setTexts] = useState<OutlineTexts>({});
+  const reload = useCallback(async () => {
+    setLinks(await readOutlineLinks());
+    setTexts(await readOutlineTexts());
+  }, []);
   useEffect(() => {
     void reload();
   }, [reload]);
@@ -56,7 +73,7 @@ export function CoursesView({
 
   const healthById = new Map(health.map((h) => [h.courseId, h]));
   const missing = courses.filter(
-    (c) => !foundOnItsOwn(healthById.get(c.id)) && (links[c.id] ?? []).length === 0,
+    (c) => !foundOnItsOwn(healthById.get(c.id)) && (links[c.id] ?? []).length === 0 && texts[c.id] === undefined,
   ).length;
   const open = helpOpen ?? missing > 0;
 
@@ -84,6 +101,10 @@ export function CoursesView({
               Paste it into that course&rsquo;s box and press <b>Add</b>. Its quizzes and due dates appear
               in a moment.
             </li>
+            <li>
+              No link, or dates still missing? Select the outline&rsquo;s schedule and assessment table, copy
+              it, and use <b>Paste outline text</b> on that course.
+            </li>
           </ol>
         )}
       </section>
@@ -95,6 +116,7 @@ export function CoursesView({
           health={healthById.get(course.id)}
           openCount={tasks.filter((t) => t.item.courseId === course.id && t.status !== 'completed').length}
           links={links[course.id] ?? []}
+          pasted={texts[course.id] ?? null}
           onSaved={reload}
         />
       ))}
@@ -118,12 +140,14 @@ type CardProps = {
   health: CourseHealth | undefined;
   openCount: number;
   links: readonly string[];
+  pasted: string | null;
   onSaved: () => Promise<void>;
 };
 
-function CourseCard({ course, health, openCount, links, onSaved }: CardProps) {
+function CourseCard({ course, health, openCount, links, pasted, onSaved }: CardProps) {
   const found = foundOnItsOwn(health);
   const hasLink = links.length > 0;
+  const hasPasted = pasted !== null;
   const [adding, setAdding] = useState(false);
   const fromOutline = health?.syllabusItems ?? 0;
   const label = shortCourseLabel(course.code, course.name);
@@ -132,7 +156,9 @@ function CourseCard({ course, health, openCount, links, onSaved }: CardProps) {
 
   const status = hasLink
     ? { tone: 'ok', text: 'Outline link added' }
-    : found
+    : hasPasted
+      ? { tone: 'ok', text: 'Outline text pasted' }
+      : found
       ? { tone: 'ok', text: 'Outline found in LEARN' }
       : { tone: 'missing', text: 'No outline found yet' };
 
@@ -163,13 +189,13 @@ function CourseCard({ course, health, openCount, links, onSaved }: CardProps) {
         {status.text}
         {status.tone === 'ok' && !adding && (
           <button type="button" class="textbtn" onClick={() => setAdding(true)}>
-            Add a link
+            Add a link or text
           </button>
         )}
       </div>
 
-      {(status.tone === 'missing' || hasLink || adding) && (
-        <OutlineEditor course={course} label={label} links={links} onSaved={onSaved} />
+      {(status.tone === 'missing' || hasLink || hasPasted || adding) && (
+        <OutlineEditor course={course} label={label} links={links} pasted={pasted} onSaved={onSaved} />
       )}
 
       {health?.lastError != null && health.lastError !== '' && (
@@ -186,12 +212,50 @@ type EditorProps = {
   course: Course;
   label: string;
   links: readonly string[];
+  pasted: string | null;
   onSaved: () => Promise<void>;
 };
 
-function OutlineEditor({ course, label, links, onSaved }: EditorProps) {
+/**
+ * Read it now rather than at the next scheduled sync. The worker may be
+ * asleep; if so the next sync picks it up anyway.
+ */
+const readSoon = (): void => {
+  chrome.runtime.sendMessage({ type: 'sync-now' }).catch(() => undefined);
+};
+
+function OutlineEditor({ course, label, links, pasted, onSaved }: EditorProps) {
   const [draft, setDraft] = useState('');
   const [message, setMessage] = useState<{ text: string; bad: boolean } | null>(null);
+  const [pasting, setPasting] = useState(false);
+  const [textDraft, setTextDraft] = useState('');
+
+  const saveText = useCallback(
+    async (text: string | null, done: string): Promise<boolean> => {
+      const ok = await writeOutlineText(course.id, text);
+      if (!ok) {
+        setMessage({ text: 'Could not save. Try again.', bad: true });
+        return false;
+      }
+      await onSaved();
+      setMessage({ text: done, bad: false });
+      readSoon();
+      return true;
+    },
+    [course.id, onSaved],
+  );
+
+  const addText = useCallback(async () => {
+    const check = parseOutlineText(textDraft);
+    if (!check.ok) {
+      setMessage({ text: check.reason, bad: true });
+      return;
+    }
+    // The draft is kept until it is safely stored: it can be a whole outline.
+    if (!(await saveText(check.text, 'Saved. Reading it now…'))) return;
+    setTextDraft('');
+    setPasting(false);
+  }, [textDraft, saveText]);
 
   const save = useCallback(
     async (next: readonly string[], done: string) => {
@@ -202,9 +266,7 @@ function OutlineEditor({ course, label, links, onSaved }: EditorProps) {
       }
       await onSaved();
       setMessage({ text: done, bad: false });
-      // Read it now rather than at the next scheduled sync. The worker may be
-      // asleep; if so the next sync picks the link up anyway.
-      chrome.runtime.sendMessage({ type: 'sync-now' }).catch(() => undefined);
+      readSoon();
     },
     [course.id, onSaved],
   );
@@ -273,6 +335,53 @@ function OutlineEditor({ course, label, links, onSaved }: EditorProps) {
           Add
         </button>
       </form>
+
+      {pasted !== null && (
+        <div class="olink">
+          <span title={pasted.slice(0, 300)}>
+            Pasted outline text &middot; {pasted.split('\n').length} lines
+          </span>
+          <button
+            type="button"
+            class="oremove"
+            aria-label={`Remove pasted outline text for ${label}`}
+            onClick={() => void saveText(null, 'Removed.')}
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
+      {pasting ? (
+        <form
+          class="opaste"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void addText();
+          }}
+        >
+          <textarea
+            class="oinput otext"
+            rows={5}
+            placeholder="Paste the outline's schedule and assessment table here"
+            aria-label={`Outline text for ${label}`}
+            value={textDraft}
+            onInput={(e) => setTextDraft((e.currentTarget as HTMLTextAreaElement).value)}
+          />
+          <div class="oform">
+            <button type="button" class="obtn ghost" onClick={() => setPasting(false)}>
+              Cancel
+            </button>
+            <button type="submit" class="obtn">
+              {pasted === null ? 'Save text' : 'Replace text'}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <button type="button" class="textbtn" onClick={() => setPasting(true)}>
+          {pasted === null ? 'Paste outline text instead' : 'Replace pasted text'}
+        </button>
+      )}
 
       {message !== null && <div class={message.bad ? 'omsg bad' : 'omsg'}>{message.text}</div>}
     </div>

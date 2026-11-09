@@ -159,11 +159,10 @@ const eachMatch = function* (re: RegExp, line: string): Generator<RegExpExecArra
 /**
  * Finds a date in a line of syllabus text.
  *
- * Only two shapes are accepted: an explicit year, or a month name with a day.
- * Purely numeric forms such as 10/14 are deliberately refused, because they
- * are ambiguous between day-first and month-first and resolving that would be
- * guessing. Refusing them costs a little recall and removes an entire class of
- * silently wrong dates.
+ * Month names are read with or without a year. Numeric forms are read only
+ * when they cannot be taken two ways (ISO dates, and slash dates like 11/13
+ * where one side cannot be a month). 10/11 is ambiguous between day-first and
+ * month-first, and resolving that would be guessing, so it is refused.
  *
  * Each pattern is scanned across the whole line rather than stopping at the
  * first hit. "Tutorial Test 1 Sept 23" offers "Test 1" to a month-day pattern
@@ -217,6 +216,57 @@ export const findDate = (rawLine: string, term: TermContext): FoundDate | null =
     if (!isRealDay(y, month, d)) continue;
 
     return { date: { y, m: month, d }, confidence: 0.85, yearWasExplicit: false, matched: m[0] };
+  }
+
+  return findNumericDate(line, term);
+};
+
+/** A score or fraction ("8/10 marks", "out of 11/15"), never a date. */
+const SCORE_AFTER = /^\s*(?:marks?|points?|pts|%)/i;
+const SCORE_BEFORE = /(?:out\s+of|mark|marks|score|grade)\s*:?\s*$/i;
+
+/**
+ * Numeric dates, accepted only when they cannot be read two ways.
+ *
+ * ISO (2026-11-13) is unambiguous. A slash date is unambiguous only when one
+ * side cannot be a month: 11/13 and 13/11 both mean November 13. When both
+ * sides could be a month (10/11), picking an order is a guess, so it is
+ * refused, as is anything that reads like a score.
+ */
+const findNumericDate = (line: string, term: TermContext): FoundDate | null => {
+  for (const m of eachMatch(/\b(20\d\d)-(\d{1,2})-(\d{1,2})\b/, line)) {
+    const y = Number(m[1]);
+    const month = Number(m[2]);
+    const d = Number(m[3]);
+    if (isRealDay(y, month, d)) {
+      return { date: { y, m: month, d }, confidence: 1, yearWasExplicit: true, matched: m[0] };
+    }
+  }
+
+  for (const m of eachMatch(/(?<![\d/])(\d{1,2})\/(\d{1,2})(?:\/(\d{4}|\d{2}))?(?![\d/])/, line)) {
+    const before = line.slice(0, m.index);
+    const after = line.slice(m.index + m[0].length);
+    if (SCORE_AFTER.test(after) || SCORE_BEFORE.test(before)) continue;
+
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    const aIsMonth = a >= 1 && a <= 12;
+    const bIsMonth = b >= 1 && b <= 12;
+    // Exactly one side can be a month. A same-number pair (10/10) is a date
+    // only with a year: without one it is far more often a full score.
+    if (aIsMonth === bIsMonth && (a !== b || m[3] === undefined)) continue;
+
+    const month = aIsMonth ? a : b;
+    const d = aIsMonth ? b : a;
+    const explicitYear = m[3] === undefined ? null : Number(m[3].length === 2 ? `20${m[3]}` : m[3]);
+    const y = explicitYear ?? inferYear(month, term);
+    if (!isRealDay(y, month, d)) continue;
+
+    if (explicitYear !== null) {
+      return { date: { y, m: month, d }, confidence: 1, yearWasExplicit: true, matched: m[0] };
+    }
+    const adjusted = reconcileWeekday({ y, m: month, d }, statedWeekday(line), term);
+    return { date: adjusted.date, confidence: adjusted.confidence, yearWasExplicit: false, matched: m[0] };
   }
 
   return null;

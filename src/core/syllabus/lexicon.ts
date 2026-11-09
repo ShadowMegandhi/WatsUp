@@ -10,7 +10,8 @@
  *
  * Since v0.4 the syllabus is read for any named assessment with a date
  * written on the same line: exams, tests, quizzes, assignments, labs,
- * projects. Anything LEARN also reports is dropped in favour of LEARN's copy.
+ * projects, and since v0.5 activities, tasks, worksheets, exercises and the
+ * like. Anything LEARN also reports is dropped in favour of LEARN's copy.
  */
 
 import type { TaskKind } from '../types';
@@ -54,6 +55,22 @@ export const ASSESSMENT_TERMS: readonly AssessmentTerm[] = [
   { term: 'report', kind: 'project' },
   { term: 'deliverable', kind: 'project' },
   { term: 'milestone', kind: 'project' },
+  { term: 'checkpoint', kind: 'project' },
+  { term: 'poster', kind: 'project' },
+  { term: 'portfolio', kind: 'project' },
+  { term: 'case study', kind: 'assignment' },
+  { term: 'in-class activity', kind: 'assignment' },
+  { term: 'lab activity', kind: 'lab' },
+  { term: 'activity', kind: 'assignment' },
+  { term: 'task', kind: 'assignment' },
+  { term: 'worksheet', kind: 'assignment' },
+  { term: 'exercise', kind: 'assignment' },
+  { term: 'check-in', kind: 'assignment' },
+  { term: 'journal', kind: 'assignment' },
+  { term: 'peer review', kind: 'assignment' },
+  { term: 'critique', kind: 'assignment' },
+  { term: 'write-up', kind: 'assignment' },
+  { term: 'discussion post', kind: 'discussion' },
 ];
 
 /**
@@ -92,12 +109,8 @@ export const NOT_A_DEADLINE_TERMS: readonly string[] = [
 ];
 
 /**
- * Hard vetoes. Any of these in the same row and the row is dropped outright,
- * whatever else it contains.
- *
- * Every entry here is a real false positive class: term breaks, registrar
- * deadlines that are not coursework, logistics, and course metadata. Between
- * them they account for most of what a naive date scan would wrongly surface.
+ * Hard vetoes. Any of these anywhere in a row and the row is dropped outright,
+ * whatever else it contains: a break or a registrar date is never coursework.
  */
 export const VETO_TERMS: readonly string[] = [
   // Breaks and holidays
@@ -136,7 +149,16 @@ export const VETO_TERMS: readonly string[] = [
   'course selection',
   'enrolment deadline',
   'enrollment deadline',
+];
 
+/**
+ * Logistics and course metadata. In a table row these veto only the cell
+ * naming the assessment; elsewhere, the whole line. A grading table's
+ * notes column ("submit through Turnitin", "contact AccessAbility for
+ * accommodations") says nothing about whether the row is a deadline, and
+ * vetoing the whole row on it dropped real quizzes and midterms.
+ */
+export const CONTEXT_VETO_TERMS: readonly string[] = [
   // Logistics
   'office hour',
   'office hours',
@@ -211,4 +233,4 @@ export const REVIEW_PREFIXES: readonly string[] = [
  * documents already cached on an existing install. Forgetting this is why a
  * heuristics fix can appear to do nothing.
  */
-export const LEXICON_VERSION = 6;
+export const LEXICON_VERSION = 7;

@@ -85,17 +85,29 @@ export const looksLikeSame = (a: TaskItem, b: TaskItem): boolean => {
   const bo = ordinalOf(bn);
   if (ao !== null && bo !== null && ao !== bo) return false;
 
+  // Different kinds (a midterm and a feedback survey) need near-identical
+  // names before they count as one.
   const sim = similarity(an, bn);
-  if (sim < 0.5) return false;
+  if (sim < (a.kind === b.kind ? 0.5 : 0.8)) return false;
 
   if (a.dueAt === null || b.dueAt === null) return sim >= 0.8;
-  return Math.abs(a.dueAt - b.dueAt) <= 10 * DAY;
+  const gap = Math.abs(a.dueAt - b.dueAt);
+
+  // "Quiz" against "Quiz 4" could be any quiz in the course. An in-class quiz
+  // from the outline and an online one in LEARN are often days apart, so an
+  // unnumbered name matches a numbered one only on the same day.
+  if ((ao === null) !== (bo === null)) return gap <= DAY;
+  return gap <= 10 * DAY;
 };
 
 const STOP = new Set(['the', 'a', 'of', 'for', 'and', 'due', 'submission', 'exam']);
 
+/** "(Nov 13)", added to tell same-named outline items apart, is not a number. */
+const DATE_SUFFIX = /\s*\((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2}\)\s*$/i;
+
 const normalize = (title: string): string =>
   title
+    .replace(DATE_SUFFIX, '')
     .toLowerCase()
     .replace(/[^a-z0-9 ]+/g, ' ')
     .split(' ')

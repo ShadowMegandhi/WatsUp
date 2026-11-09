@@ -18,7 +18,7 @@ already signed in to:
 | Host | What is read | Why |
 |---|---|---|
 | `learn.uwaterloo.ca` | assignments, quizzes, discussions, calendar events, marks, announcements | to list your deadlines, exams and marks |
-| `outline.uwaterloo.ca` | course outlines | to find dated midterms and exams |
+| `outline.uwaterloo.ca` | course outlines | to find dated quizzes, assignments and exams |
 
 It reads these using your existing browser sign-in, the same way the pages
 themselves do. It never sees, asks for or stores your password.

@@ -11,8 +11,14 @@
  *      only when exactly one of them is marked as the due date.
  *   3. That date is not a range, sits inside the term, and agrees with any
  *      weekday written beside it.
- *   4. Nothing on the line says it is a window, a placeholder, a release
- *      rather than a deadline, a review session, ungraded, or not happening.
+ *   4. Nothing says it is a window, a placeholder, a release rather than a
+ *      deadline, a review session, ungraded, or not happening. In a table
+ *      row only the cells naming and dating the assessment are checked, so
+ *      a notes column cannot veto a real quiz.
+ *
+ * An outline that puts the name and the date on neighbouring lines (a PDF
+ * cell that wrapped, a heading over a "Due: Nov 13" line) is read as one
+ * line, but only when the neighbour is nothing but a date.
  *
  * Until v0.4 this read midterms and exams only. In-class quizzes and other
  * dated work that never appears in a LEARN tool were being missed, so the
@@ -22,6 +28,7 @@
 import type { TaskKind } from '../types';
 import {
   ASSESSMENT_TERMS,
+  CONTEXT_VETO_TERMS,
   NEGATION_TERMS,
   NOT_A_DEADLINE_TERMS,
   REVIEW_PREFIXES,
@@ -59,13 +66,120 @@ const ADJACENT_GAP = 2;
 /** At most this many dates are looked for on one line. */
 const MAX_DATES_PER_LINE = 4;
 
+/** A schedule row with a long notes cell is still one row. */
+const MAX_LINE_LENGTH = 800;
+
+/** A line naming an assessment without a date is a name, not prose. */
+const MAX_NAME_LINE = 120;
+
+/** What a date-only line may carry besides its date: "Due:", "Friday,". */
+const MAX_DATE_LINE_EXTRA = 12;
+
 export const extractAssessments = (
   lines: readonly string[],
   term: TermContext,
 ): readonly Candidate[] => {
   const out: Candidate[] = [];
-  for (const raw of lines) out.push(...readLine(raw, term));
+  // A date line lends its date to one name only.
+  const claimed = new Set<number>();
+
+  lines.forEach((raw, i) => {
+    const direct = readLine(raw, term);
+    if (direct.length > 0) {
+      out.push(...direct);
+      return;
+    }
+    const split = readSplit(lines, i, term, claimed);
+    if (split !== null) {
+      claimed.add(split.used);
+      out.push(...split.found);
+    }
+  });
+
   return disambiguate(dedupe(out));
+};
+
+const tidy = (raw: string): string => raw.replace(/\s+/g, ' ').trim();
+
+/**
+ * A name on one line and its date alone on the next (or the line before).
+ * The pair is read as one table row, so every rule still applies to it.
+ */
+const readSplit = (
+  lines: readonly string[],
+  i: number,
+  term: TermContext,
+  claimed: ReadonlySet<number>,
+): { found: readonly Candidate[]; used: number } | null => {
+  const line = tidy(lines[i] ?? '');
+  if (line.length > MAX_NAME_LINE || findDate(line, term) !== null) return null;
+
+  const lower = line.toLowerCase();
+  const named = findMentions(lower).filter((m) => !isNegated(lower, m.at));
+  if (named.length !== 1) return null;
+
+  const order = pairingOrder(lines, i, term, claimed);
+  if (order === null) return null;
+
+  for (const j of order) {
+    if (claimed.has(j)) continue;
+    const near = tidy(lines[j] ?? '');
+    if (!isBareDateLine(near, term)) continue;
+
+    const joined = j > i ? `${line} | ${near}` : `${near} | ${line}`;
+    const found = readLine(joined, term);
+    if (found.length > 0) return { found, used: j };
+  }
+  return null;
+};
+
+const namesOne = (raw: string | undefined): boolean => {
+  const lower = tidy(raw ?? '').toLowerCase();
+  return findMentions(lower).filter((m) => !isNegated(lower, m.at)).length === 1;
+};
+
+/**
+ * Which neighbouring lines may lend line i their date, in the order to try.
+ *
+ * With a free date line on both sides the layout decides: names following
+ * their dates ("Oct 10 / Quiz 1 / Oct 24 / Quiz 2") take the line above,
+ * names followed by their dates take the line below. When the layout does
+ * not say, nothing is paired, because either choice could be a wrong date.
+ */
+const pairingOrder = (
+  lines: readonly string[],
+  i: number,
+  term: TermContext,
+  claimed: ReadonlySet<number>,
+): readonly number[] | null => {
+  const free = (j: number): boolean => !claimed.has(j) && isBareDateLine(tidy(lines[j] ?? ''), term);
+  const above = free(i - 1);
+  const belowFree = free(i + 1);
+
+  // Two date lines below a name are usually "Released: ..." then "Due: ...";
+  // the second is looked at only when the first is a date line too.
+  const below = belowFree ? [i + 1, i + 2] : [i + 1];
+
+  if (!above || !belowFree) return [...below, i - 1];
+  if (namesOne(lines[i + 2])) return [i - 1];
+  if (namesOne(lines[i - 2])) return below;
+  return null;
+};
+
+/** "Friday, November 13", "Due: Nov 13 at 11:59 pm", and nothing more. */
+const isBareDateLine = (line: string, term: TermContext): boolean => {
+  if (line === '') return false;
+  const found = findDate(line, term);
+  if (found === null) return false;
+  if (findMentions(line.toLowerCase()).length > 0) return false;
+
+  const extra = line
+    .replace(found.matched, ' ')
+    .replace(/\b\d{1,2}(?::\d{2})?\s*[ap]\.?m\.?/gi, ' ')
+    .replace(/\b(?:sun|mon|tues?|wed(?:nes)?|thur?s?|fri|sat(?:ur)?)(?:day)?\b/gi, ' ')
+    .replace(/\b(?:due|date|deadline|on|by|at|before|until|submit|submission|in class)\b/gi, ' ')
+    .replace(/[^a-z]/gi, '');
+  return extra.length <= MAX_DATE_LINE_EXTRA;
 };
 
 /** The first assessment read from a line, or null. Kept for focused tests. */
@@ -73,17 +187,13 @@ export const readAssessmentLine = (raw: string, term: TermContext): Candidate | 
   readLine(raw, term)[0] ?? null;
 
 export const readLine = (raw: string, term: TermContext): readonly Candidate[] => {
-  const line = raw.replace(/\s+/g, ' ').trim();
-  if (line.length < 6 || line.length > 300) return [];
+  const line = tidy(raw);
+  if (line.length < 6 || line.length > MAX_LINE_LENGTH) return [];
 
   const lower = line.toLowerCase();
 
+  // Breaks and registrar dates veto the whole row: it is not coursework.
   if (VETO_TERMS.some((t) => lower.includes(t))) return [];
-  if (UNGRADED_TERMS.some((t) => lower.includes(t))) return [];
-  if (REVIEW_PREFIXES.some((t) => lower.includes(t))) return [];
-  // Word-bounded, because "tba" can sit inside other words.
-  if (WINDOW_TERMS.some((t) => containsWord(lower, t) >= 0)) return [];
-  if (NOT_A_DEADLINE_TERMS.some((t) => containsWord(lower, t) >= 0)) return [];
 
   const mentions = findMentions(lower).filter((m) => !isNegated(lower, m.at));
   if (mentions.length === 0) return [];
@@ -96,7 +206,7 @@ export const readLine = (raw: string, term: TermContext): readonly Candidate[] =
   const weight = mentions.length === 1 ? readWeight(line) : null;
   const time = mentions.length === 1 ? readTime(line, found.matched) : null;
 
-  return mentions.map((m) => ({
+  return mentions.filter((m) => passesScopedRules(line, m.at, found.matched)).map((m) => ({
     title: buildTitle(line, m.term, found.matched),
     kind: m.kind,
     date: found.date,
@@ -136,6 +246,7 @@ const readEachMention = (
 
     const found = pickDate(own, term);
     if (found === null) return;
+    if (!passesScopedRules(line, m.at, found.matched)) return;
 
     const time = readTime(own, found.matched);
     out.push({
@@ -151,6 +262,45 @@ const readEachMention = (
   });
 
   return out;
+};
+
+/**
+ * The text an assessment is read from. In a table row that is the cell
+ * naming it and the cell dating it; elsewhere, the whole line.
+ */
+const scopeOf = (line: string, mentionAt: number, dateText: string): string => {
+  if (!line.includes('|')) return line;
+  const fromMention = line.indexOf(dateText, mentionAt);
+  const dateAt = fromMention >= 0 ? fromMention : Math.max(0, line.indexOf(dateText));
+  return `${cellAround(line, mentionAt)} ${cellAround(line, dateAt)}`;
+};
+
+const cellAround = (line: string, at: number): string => {
+  const start = at > 0 ? line.lastIndexOf('|', at - 1) + 1 : 0;
+  const end = line.indexOf('|', at);
+  return line.slice(start, end < 0 ? line.length : end);
+};
+
+/**
+ * Logistics, ungraded work, review sessions, windows and release dates,
+ * checked against the assessment's own text. A release word does not veto
+ * a date the line marks as the due date: "posted Oct 30, due Nov 13".
+ */
+const passesScopedRules = (line: string, mentionAt: number, dateText: string): boolean => {
+  // Logistics words veto only the cell naming the assessment: a date cell
+  // reading "Oct 22, 7 pm, see accommodations" is still the midterm's date.
+  const nameText = (line.includes('|') ? cellAround(line, mentionAt) : line).toLowerCase();
+  if (CONTEXT_VETO_TERMS.some((t) => nameText.includes(t))) return false;
+
+  const scope = scopeOf(line, mentionAt, dateText).toLowerCase();
+  if (UNGRADED_TERMS.some((t) => scope.includes(t))) return false;
+  if (REVIEW_PREFIXES.some((t) => scope.includes(t))) return false;
+  // Word-bounded, because "tba" can sit inside other words.
+  if (WINDOW_TERMS.some((t) => containsWord(scope, t) >= 0)) return false;
+  if (NOT_A_DEADLINE_TERMS.some((t) => containsWord(scope, t) >= 0) && !isMarkedDue(line, dateText)) {
+    return false;
+  }
+  return true;
 };
 
 /**

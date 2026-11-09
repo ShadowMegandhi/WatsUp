@@ -51,9 +51,10 @@ describe('findDate', () => {
   });
 
   it('refuses a purely numeric date rather than guessing the order', () => {
-    // 10/14 is ambiguous between October 14 and 10 April. Guessing is how you
-    // land eleven days wrong, so it is declined outright.
-    expect(findDate('Assignment due 10/14', FALL)).toBeNull();
+    // 10/11 is October 11 month-first and November 10 day-first. Guessing is
+    // how you land a month wrong, so it is declined outright. (10/14 is not
+    // ambiguous: 14 cannot be a month, so it reads as October 14.)
+    expect(findDate('Assignment due 10/11', FALL)).toBeNull();
   });
 
   it('is not fooled by a chapter number', () => {

@@ -34,6 +34,7 @@ const K = {
   panel: 'panelPrefs',
   seen: 'seenItemIds',
   outlineLinks: 'outlineLinks',
+  outlineTexts: 'outlineTexts',
 } as const;
 
 const area = (): chrome.storage.LocalStorageArea => chrome.storage.local;
@@ -258,6 +259,30 @@ export const writeOutlineLinks = async (
   return saved;
 };
 
+/** Outline text the student pasted, by course. Owned by the user, like links. */
+export type OutlineTexts = Readonly<Record<string, string>>;
+
+export const readOutlineTexts = (): Promise<OutlineTexts> => get<OutlineTexts>(K.outlineTexts, {});
+
+/**
+ * Saves or clears one course's pasted outline text, and drops its cached
+ * syllabus reading so the next sync reads it straight away.
+ */
+export const writeOutlineText = async (courseId: string, text: string | null): Promise<boolean> => {
+  const all = await readOutlineTexts();
+  const next: Record<string, string> = { ...all };
+  if (text === null || text === '') delete next[courseId];
+  else next[courseId] = text;
+
+  const saved = await set({ [K.outlineTexts]: next });
+  try {
+    await area().remove(`syllabus:${courseId}`);
+  } catch {
+    // A stale cache only delays the reading by a day.
+  }
+  return saved;
+};
+
 // --- retired keys --------------------------------------------------------
 
 /**
@@ -286,7 +311,7 @@ export const dropRetiredKeys = async (): Promise<void> => {
  */
 export const clearDerived = async (): Promise<void> => {
   const all = await area().get(null);
-  const keep = new Set<string>([K.overrides, K.panel, K.schemaVersion, K.outlineLinks]);
+  const keep = new Set<string>([K.overrides, K.panel, K.schemaVersion, K.outlineLinks, K.outlineTexts]);
 
   const doomed = Object.keys(all).filter((key) => !keep.has(key));
   if (doomed.length > 0) await area().remove(doomed);

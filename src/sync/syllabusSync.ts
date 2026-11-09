@@ -44,6 +44,8 @@ export const syncSyllabus = async (
   now: number,
   /** Links the student added in the Courses tab, read like any outline. */
   userLinks: readonly string[] = [],
+  /** Outline text the student pasted in the Courses tab. */
+  pastedText: string | null = null,
 ): Promise<Result<SyllabusOutcome, AppError>> => {
   const empty = { items: [], docsFound: 0, docsRead: 0, note: null } as const;
 
@@ -61,7 +63,9 @@ export const syncSyllabus = async (
     ...(toc.ok ? pickSyllabusTopics(flattenToc(toc.value.json, LEARN_ORIGIN, course.id), now) : []),
   ];
 
-  if (picked.length === 0 && overview.length === 0) {
+  const pasted = pastedText === null ? [] : toLines(pastedText);
+
+  if (picked.length === 0 && overview.length === 0 && pasted.length === 0) {
     return ok({
       ...empty,
       note: toc.ok ? "No syllabus found in this course." : "Could not read the course content list.",
@@ -79,6 +83,14 @@ export const syncSyllabus = async (
       ...candidatesToItems(extractAssessments(lines, term), course.id, doc, now),
     );
   };
+
+  if (pasted.length > 0) {
+    take(pasted, {
+      topicId: 'pasted',
+      title: 'Your pasted outline',
+      url: `${LEARN_ORIGIN}/d2l/home/${course.id}`,
+    });
+  }
 
   for (const part of overview) take(part.lines, part.doc);
 
@@ -98,7 +110,7 @@ export const syncSyllabus = async (
 
   return ok({
     items,
-    docsFound: picked.length + overview.length,
+    docsFound: picked.length + overview.length + (pasted.length > 0 ? 1 : 0),
     docsRead: read,
     note:
       problems.length > 0
@@ -239,12 +251,15 @@ const fetchText = async (fetcher: Fetcher, url: string): Promise<string | null> 
  * regular expressions and braces then reaches the assessment reader looking
  * like prose. That is noise at best and a false positive at worst.
  *
+ * Plain text copied from a table (a pasted outline) separates cells with
+ * tabs; those become the same " | " cell marks an HTML table gets.
+ *
  * Table rows are collapsed onto one line, which suits the reader: it wants a
  * date and an assessment name in the same string, and a table row is exactly
  * that.
  */
 export const toLines = (text: string): readonly string[] =>
-  (LOOKS_LIKE_HTML.test(text) ? text.replace(WHITESPACE, " ") : text)
+  (LOOKS_LIKE_HTML.test(text) ? text.replace(WHITESPACE, " ") : text.replace(TAB_CELLS, " | "))
     .replace(SCRIPT_BLOCK, " ")
     .replace(STYLE_BLOCK, " ")
     .replace(COMMENT_BLOCK, " ")
@@ -276,3 +291,4 @@ const ANY_TAG = /<[^>]+>/g;
 const NBSP = /&nbsp;/gi;
 const AMP = /&amp;/gi;
 const WHITESPACE = /\s+/g;
+const TAB_CELLS = /[ ]*\t+[ ]*/g;

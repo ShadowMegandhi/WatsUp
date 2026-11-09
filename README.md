@@ -26,11 +26,13 @@ Both LEARN and your course outlines:
 
 1. **LEARN**: Assignments (Dropbox), Quizzes, Discussions with a due date or close date,
    and exams on the course calendar. A discussion is ticked off once you have posted in it.
-2. **Course outlines** (a PDF or Word file in LEARN, the course Overview page, or
-   outline.uwaterloo.ca): quizzes, tests, midterms, labs and other work that has a
-   single, exact date written beside it. Anything vaguer ("midterm week", "during the
-   exam period", "TBA") is left out. These are tagged *From course outline*, and
-   hovering the tag shows the exact line they came from.
+2. **Course outlines** (a PDF or Word file in LEARN, the course Overview page,
+   outline.uwaterloo.ca, or outline text you paste on the Courses tab): quizzes,
+   tests, midterms, labs, activities, tasks, worksheets and other work that has a
+   single, exact date written beside it or on the line right below it. Anything
+   vaguer ("midterm week", "during the exam period", "TBA") is left out. These are
+   tagged *From course outline*, and hovering the tag shows the exact line they
+   came from.
 
 When LEARN and an outline both list the same thing, LEARN's copy wins, because its
 dates are the live ones.
@@ -77,7 +79,7 @@ The extension requests access to two UW hosts, and only these:
 | Host | Why |
 |---|---|
 | `learn.uwaterloo.ca` | assignments, quizzes, calendar exams, marks and announcements |
-| `outline.uwaterloo.ca` | course outlines, read only for dated midterms and exams |
+| `outline.uwaterloo.ca` | course outlines, read only for dated assessments |
 
 Earlier versions also read Quest and Portal. Since v0.3.0 they do not, and the
 extension no longer asks for access to them.
